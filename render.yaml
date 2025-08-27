@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: susps-web
+    env: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn src.backend.api:app -k uvicorn.workers.UvicornWorker --timeout 120
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
