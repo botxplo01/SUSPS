@@ -1,0 +1,33 @@
+stages:
+  ingest:
+    cmd: python -m src.pipeline.ingest
+    deps:
+      - src/pipeline/ingest.py
+    outs:
+      - data/raw/worldpop_summary.csv
+      - data/raw/energy_demand.csv
+
+  preprocess:
+    cmd: python -m src.pipeline.preprocess
+    deps:
+      - src/pipeline/preprocess.py
+      - data/raw/worldpop_summary.csv
+      - data/raw/energy_demand.csv
+    outs:
+      - data/processed/worldpop_features.csv
+      - data/processed/energy_features.csv
+
+  synthetic:
+    cmd: python -m src.pipeline.synthetic
+    deps:
+      - src/pipeline/synthetic.py
+    outs:
+      - data/processed/synthetic_demographics.csv
+
+  audits:
+    cmd: python -m src.pipeline.fairness
+    deps:
+      - src/pipeline/fairness.py
+      - data/processed/synthetic_demographics.csv
+    outs:
+      - data/processed/fairness_report.csv
