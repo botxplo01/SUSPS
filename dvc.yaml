@@ -6,6 +6,9 @@ stages:
     outs:
       - data/raw/worldpop_summary.csv
       - data/raw/energy_demand.csv
+      - data/raw/traffic_flows.csv
+      - data/raw/environment_monthly.csv
+      - data/raw/socioeconomic.csv
 
   preprocess:
     cmd: python -m src.pipeline.preprocess
@@ -13,9 +16,15 @@ stages:
       - src/pipeline/preprocess.py
       - data/raw/worldpop_summary.csv
       - data/raw/energy_demand.csv
+      - data/raw/traffic_flows.csv
+      - data/raw/environment_monthly.csv
+      - data/raw/socioeconomic.csv
     outs:
       - data/processed/worldpop_features.csv
       - data/processed/energy_features.csv
+      - data/processed/traffic_features.csv
+      - data/processed/environment_features.csv
+      - data/processed/socioeconomic_features.csv
 
   synthetic:
     cmd: python -m src.pipeline.synthetic
