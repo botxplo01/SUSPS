@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import pandas as pd
 
-from .config import PROCESSED_DIR, ensure_dirs
+from . import config
 
 
 def demographic_parity_gap(df: pd.DataFrame, group: str, score: str) -> float:
@@ -56,15 +56,15 @@ def run_audits(input_path: Path, group_col: str, score_col: str, region_col: str
 
 
 def save_report(report: pd.DataFrame, name: str = "fairness_report.csv") -> Path:
-    ensure_dirs()
-    out = PROCESSED_DIR / name
+    config.ensure_dirs()
+    out = config.PROCESSED_DIR / name
     report.to_csv(out, index=False)
     return out
 
 
 def main() -> None:
     # Example: audit synthetic demographics if available
-    syn = PROCESSED_DIR / "synthetic_demographics.csv"
+    syn = config.PROCESSED_DIR / "synthetic_demographics.csv"
     if syn.exists():
         rep = run_audits(syn, group_col="urban", score_col="income")
         out = save_report(rep)

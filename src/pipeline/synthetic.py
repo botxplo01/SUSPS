@@ -4,10 +4,10 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
-from .config import PROCESSED_DIR, ensure_dirs, Defaults
+from . import config
 
 
-def generate_demographics(n: int = 1000, seed: int = Defaults.seed) -> pd.DataFrame:
+def generate_demographics(n: int = 1000, seed: int = config.Defaults.seed) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     income = rng.lognormal(mean=8.5, sigma=0.6, size=n)
     household_size = rng.integers(1, 8, size=n)
@@ -20,8 +20,8 @@ def generate_demographics(n: int = 1000, seed: int = Defaults.seed) -> pd.DataFr
 
 
 def save_synthetic(df: pd.DataFrame, name: str = "synthetic_demographics") -> Path:
-    ensure_dirs()
-    path = PROCESSED_DIR / f"{name}.csv"
+    config.ensure_dirs()
+    path = config.PROCESSED_DIR / f"{name}.csv"
     df.to_csv(path, index=False)
     return path
 

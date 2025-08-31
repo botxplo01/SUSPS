@@ -4,10 +4,10 @@ from pathlib import Path
 import pandas as pd
 from typing import Optional
 
-from .config import RAW_DIR, ensure_dirs, Defaults
+from . import config
 
 
-def fetch_worldpop(country_code: str = Defaults.worldpop_country_code) -> pd.DataFrame:
+def fetch_worldpop(country_code: str = config.Defaults.worldpop_country_code) -> pd.DataFrame:
     """Placeholder: fetch or mock WorldPop population grid summary.
     Returns a small DataFrame to keep the pipeline runnable offline.
     """
@@ -19,7 +19,7 @@ def fetch_worldpop(country_code: str = Defaults.worldpop_country_code) -> pd.Dat
     return pd.DataFrame(data)
 
 
-def fetch_energy_demand(region: str = Defaults.region) -> pd.DataFrame:
+def fetch_energy_demand(region: str = config.Defaults.region) -> pd.DataFrame:
     """Placeholder synthetic energy demand by sector."""
     data = {
         "sector": ["household", "commercial", "industrial"],
@@ -60,14 +60,14 @@ def fetch_socioeconomic() -> pd.DataFrame:
 
 
 def save_raw(df: pd.DataFrame, name: str) -> Path:
-    ensure_dirs()
-    path = RAW_DIR / f"{name}.csv"
+    config.ensure_dirs()
+    path = config.RAW_DIR / f"{name}.csv"
     df.to_csv(path, index=False)
     return path
 
 
 def main() -> None:
-    ensure_dirs()
+    config.ensure_dirs()
     wp = fetch_worldpop()
     ed = fetch_energy_demand()
     tf = fetch_traffic()

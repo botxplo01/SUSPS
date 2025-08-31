@@ -3,54 +3,54 @@ from __future__ import annotations
 from pathlib import Path
 import pandas as pd
 
-from .config import RAW_DIR, PROCESSED_DIR, ensure_dirs
+from . import config
 
 
 def preprocess_worldpop() -> Path:
-    ensure_dirs()
-    src = RAW_DIR / "worldpop_summary.csv"
+    config.ensure_dirs()
+    src = config.RAW_DIR / "worldpop_summary.csv"
     if not src.exists():
         raise FileNotFoundError(f"Missing raw input: {src}")
     df = pd.read_csv(src)
     # Simple normalization: share of total population
     total = df["population"].sum()
     df["pop_share"] = df["population"] / total
-    out = PROCESSED_DIR / "worldpop_features.csv"
+    out = config.PROCESSED_DIR / "worldpop_features.csv"
     df.to_csv(out, index=False)
     return out
 
 
 def preprocess_energy() -> Path:
-    ensure_dirs()
-    src = RAW_DIR / "energy_demand.csv"
+    config.ensure_dirs()
+    src = config.RAW_DIR / "energy_demand.csv"
     if not src.exists():
         raise FileNotFoundError(f"Missing raw input: {src}")
     df = pd.read_csv(src)
     # Feature: percentage of sector demand
     total = df["demand_mwh"].sum()
     df["pct"] = (df["demand_mwh"] / total).round(4)
-    out = PROCESSED_DIR / "energy_features.csv"
+    out = config.PROCESSED_DIR / "energy_features.csv"
     df.to_csv(out, index=False)
     return out
 
 
 def preprocess_traffic() -> Path:
-    ensure_dirs()
-    src = RAW_DIR / "traffic_flows.csv"
+    config.ensure_dirs()
+    src = config.RAW_DIR / "traffic_flows.csv"
     if not src.exists():
         raise FileNotFoundError(f"Missing raw input: {src}")
     df = pd.read_csv(src)
     # Peak indicator and bus pax per hour (rough proxy)
     df["is_peak"] = df["hour"].isin([7, 8, 9, 16, 17, 18]).astype(int)
     df["bus_pax_per_hour"] = (df["veh_per_hour"] * df["mode_share_bus"] * 40).round(1)
-    out = PROCESSED_DIR / "traffic_features.csv"
+    out = config.PROCESSED_DIR / "traffic_features.csv"
     df.to_csv(out, index=False)
     return out
 
 
 def preprocess_environment() -> Path:
-    ensure_dirs()
-    src = RAW_DIR / "environment_monthly.csv"
+    config.ensure_dirs()
+    src = config.RAW_DIR / "environment_monthly.csv"
     if not src.exists():
         raise FileNotFoundError(f"Missing raw input: {src}")
     df = pd.read_csv(src)
@@ -58,14 +58,14 @@ def preprocess_environment() -> Path:
     base = 22
     df["cooling_deg"] = (df["temp_c"] - base).clip(lower=0)
     df["wet_month"] = (df["rain_mm"] >= 100).astype(int)
-    out = PROCESSED_DIR / "environment_features.csv"
+    out = config.PROCESSED_DIR / "environment_features.csv"
     df.to_csv(out, index=False)
     return out
 
 
 def preprocess_socioeconomic() -> Path:
-    ensure_dirs()
-    src = RAW_DIR / "socioeconomic.csv"
+    config.ensure_dirs()
+    src = config.RAW_DIR / "socioeconomic.csv"
     if not src.exists():
         raise FileNotFoundError(f"Missing raw input: {src}")
     df = pd.read_csv(src)
@@ -74,7 +74,7 @@ def preprocess_socioeconomic() -> Path:
         df["income_usd"].max() - df["income_usd"].min()
     )
     df["employment_score"] = (df["employment_rate"] * 100).round(1)
-    out = PROCESSED_DIR / "socioeconomic_features.csv"
+    out = config.PROCESSED_DIR / "socioeconomic_features.csv"
     df.to_csv(out, index=False)
     return out
 

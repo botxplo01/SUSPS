@@ -40,4 +40,3 @@ stages:
       - data/processed/synthetic_demographics.csv
     outs:
       - data/processed/fairness_report.csv
-

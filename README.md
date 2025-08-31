@@ -13,6 +13,23 @@ Quick start:
 
 See `docs/specification.md` for the full spec and `docs/user_guide.md` for usage.
 
+## Data pipeline: regenerate artifacts
+
+This project includes a lightweight data pipeline that produces CSVs under `data/raw/` and `data/processed/`.
+
+- Python modules (no extra tools required):
+  - `python -m src.pipeline.ingest`
+  - `python -m src.pipeline.preprocess`
+  - `python -m src.pipeline.synthetic` (optional)
+  - `python -m src.pipeline.fairness` (optional)
+
+- Optional: DVC orchestration (if you use DVC):
+  - `dvc repro`
+
+Outputs include:
+- `data/raw/`: worldpop_summary.csv, energy_demand.csv, traffic_flows.csv, environment_monthly.csv, socioeconomic.csv
+- `data/processed/`: worldpop_features.csv, energy_features.csv, traffic_features.csv, environment_features.csv, socioeconomic_features.csv, synthetic_demographics.csv, fairness_report.csv
+
 ## Deployment (Render)
 
 This repo includes a `Procfile` and a Render blueprint `render.yaml`.
