@@ -89,3 +89,11 @@ Key URLs
 - Dashboard: `/dash/`
 - Non-DB demo API (Render path): `/growth`, `/energy`, `/traffic`
 - DB-backed API (Docker): `/areas`, `/energy`, `/traffic`, summaries at `/energy/summary`, `/traffic/summary`
+
+Examples (non-DB demo responses, truncated):
+- `/growth`
+  {"items": [{"year": 2025, "predicted_population": 800000}, {"year": 2026, "predicted_population": 824000}]}
+- `/energy`
+  {"items": [{"hour": 0, "demand_mwh": 5.0}, {"hour": 8, "demand_mwh": 8.0}]}
+- `/traffic`
+  {"items": [{"hour": 7, "volume": 850}, {"hour": 18, "volume": 900}]}

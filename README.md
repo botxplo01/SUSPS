@@ -13,6 +13,43 @@ Quick start:
 
 See `docs/specification.md` for the full spec and `docs/user_guide.md` for usage.
 
+## Demo API (no DB)
+
+These endpoints are available in the Render deployment and local non-DB runs.
+
+- GET `/growth`
+- GET `/energy`
+- GET `/traffic`
+
+Examples (truncated):
+
+- `/growth`
+
+  ```json
+  {"items": [
+    {"year": 2025, "predicted_population": 800000},
+    {"year": 2026, "predicted_population": 824000}
+  ]}
+  ```
+
+- `/energy`
+
+  ```json
+  {"items": [
+    {"hour": 0, "demand_mwh": 5.0},
+    {"hour": 8, "demand_mwh": 8.0}
+  ]}
+  ```
+
+- `/traffic`
+
+  ```json
+  {"items": [
+    {"hour": 7, "volume": 850},
+    {"hour": 18, "volume": 900}
+  ]}
+  ```
+
 ## Data pipeline: regenerate artifacts
 
 This project includes a lightweight data pipeline that produces CSVs under `data/raw/` and `data/processed/`.
