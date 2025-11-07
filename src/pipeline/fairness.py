@@ -29,7 +29,9 @@ def geographic_coverage(df: pd.DataFrame, region_col: str) -> float:
     return float(represented / total_regions)
 
 
-def run_audits(input_path: Path, group_col: str, score_col: str, region_col: str | None = None) -> pd.DataFrame:
+def run_audits(
+    input_path: Path, group_col: str, score_col: str, region_col: str | None = None
+) -> pd.DataFrame:
     """Run a minimal audit suite and return a one-row report."""
     df = pd.read_csv(input_path)
 
@@ -41,7 +43,9 @@ def run_audits(input_path: Path, group_col: str, score_col: str, region_col: str
     # Demographic parity gap if columns exist
     if group_col in df.columns and score_col in df.columns:
         try:
-            report["demographic_parity_gap"] = demographic_parity_gap(df, group_col, score_col)
+            report["demographic_parity_gap"] = demographic_parity_gap(
+                df, group_col, score_col
+            )
         except Exception as e:
             report["demographic_parity_gap"] = f"error: {e}"
 

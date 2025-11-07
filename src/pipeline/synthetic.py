@@ -7,16 +7,20 @@ from pathlib import Path
 from . import config
 
 
-def generate_demographics(n: int = 1000, seed: int = config.Defaults.seed) -> pd.DataFrame:
+def generate_demographics(
+    n: int = 1000, seed: int = config.Defaults.seed
+) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     income = rng.lognormal(mean=8.5, sigma=0.6, size=n)
     household_size = rng.integers(1, 8, size=n)
     urban = rng.choice([0, 1], p=[0.4, 0.6], size=n)
-    return pd.DataFrame({
-        "income": income,
-        "household_size": household_size,
-        "urban": urban,
-    })
+    return pd.DataFrame(
+        {
+            "income": income,
+            "household_size": household_size,
+            "urban": urban,
+        }
+    )
 
 
 def save_synthetic(df: pd.DataFrame, name: str = "synthetic_demographics") -> Path:

@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from src.pipeline import ingest, preprocess, synthetic, fairness
-from src.pipeline.config import RAW_DIR, PROCESSED_DIR, ensure_dirs
 
 
 def test_pipeline_end_to_end(tmp_path: Path, monkeypatch):
@@ -14,7 +13,9 @@ def test_pipeline_end_to_end(tmp_path: Path, monkeypatch):
 
     # Monkeypatch config module constants used inside pipeline modules
     monkeypatch.setattr("src.pipeline.config.RAW_DIR", raw_dir, raising=False)
-    monkeypatch.setattr("src.pipeline.config.PROCESSED_DIR", processed_dir, raising=False)
+    monkeypatch.setattr(
+        "src.pipeline.config.PROCESSED_DIR", processed_dir, raising=False
+    )
 
     # Run steps
     ingest.main()

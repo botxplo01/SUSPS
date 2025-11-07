@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 import pandas as pd
-from typing import Optional
 
 from . import config
 
 
-def fetch_worldpop(country_code: str = config.Defaults.worldpop_country_code) -> pd.DataFrame:
+def fetch_worldpop(
+    country_code: str = config.Defaults.worldpop_country_code,
+) -> pd.DataFrame:
     """Placeholder: fetch or mock WorldPop population grid summary.
     Returns a small DataFrame to keep the pipeline runnable offline.
     """

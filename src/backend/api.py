@@ -28,6 +28,7 @@ def health():
 def root_redirect():
     return RedirectResponse(url="/dash/")
 
+
 # Mount Dash app under /dash
 _dash_app = create_dash_app(requests_pathname_prefix="/dash/")
 app.mount("/dash", WSGIMiddleware(_dash_app.server))

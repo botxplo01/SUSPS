@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+SQLAlchemy
+psycopg2-binary
+geoalchemy2
+alembic
+dash
+dash-bootstrap-components
+python-dotenv

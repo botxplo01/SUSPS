@@ -13,7 +13,9 @@ except Exception:  # pragma: no cover
 
 def run_api():
     # Run FastAPI (which also mounts Dash)
-    uvicorn.run("src.backend.api:app", host="127.0.0.1", port=8000, reload=False, factory=False)
+    uvicorn.run(
+        "src.backend.api:app", host="127.0.0.1", port=8000, reload=False, factory=False
+    )
 
 
 def main():

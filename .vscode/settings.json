@@ -1,0 +1,12 @@
+{
+    "cSpell.words": [
+        "dotenv",
+        "fastapi",
+        "gunicorn",
+        "httpx",
+        "numpy",
+        "plotly",
+        "pytest",
+        "uvicorn"
+    ]
+}
