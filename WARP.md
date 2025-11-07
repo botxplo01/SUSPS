@@ -37,6 +37,9 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
     - PowerShell: `.\\scripts\\seed-db.ps1` (seeds default files)
     - Bash: `./scripts/seed-db.sh` (seeds default files)
     - Custom: pass file paths to seed only specific files
+  - Optional DB-backed tests:
+    - Enable: set `E2E_DOCKER=1`, start stack (`docker compose up -d`), then `pytest -q`
+    - Tests live in `tests/test_db_endpoints.py` and hit `http://localhost:8000`
 
 - Linting/formatting
   - Install dev tools: `pip install -r requirements-dev.txt`
@@ -48,6 +51,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - Git hooks (pre-commit):
     - Install: `pip install -r requirements-dev.txt && pre-commit install`
     - Run on all files: `pre-commit run --all-files`
+    - Hooks include: Ruff (with autofix), Black, and Mypy
 - Type checking (mypy)
   - Install dev tools: `pip install -r requirements-dev.txt`
   - Run type check: `mypy`
