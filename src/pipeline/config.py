@@ -7,7 +7,7 @@ from typing import Optional
 
 # Optionally load environment variables from a .env file if python-dotenv is installed
 try:  # pragma: no cover - optional dependency
-    from dotenv import load_dotenv  # type: ignore
+    from dotenv import load_dotenv
 
     load_dotenv()
 except Exception:

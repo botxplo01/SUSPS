@@ -6,7 +6,7 @@ import uvicorn
 
 # Optional dependency; only used when running desktop mode
 try:
-    import webview  # type: ignore
+    import webview
 except Exception:  # pragma: no cover
     webview = None
 
