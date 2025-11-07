@@ -4,6 +4,9 @@ from starlette.middleware.wsgi import WSGIMiddleware
 from starlette.responses import JSONResponse
 from starlette.responses import RedirectResponse
 
+from src.models.growth import predict_growth
+from src.models.energy import daily_profile as energy_profile
+from src.models.traffic import daily_profile as traffic_profile
 from src.webapp.app import create_dash_app
 
 app = FastAPI(title="SUSPS Backend", version="0.1.0")
@@ -25,42 +28,19 @@ def health():
 
 @app.get("/growth")
 def demo_growth():
-    base = 800_000
-    years = list(range(2025, 2031))
-    # Simple +3% growth per year
-    items = [
-        {"year": y, "predicted_population": int(base * (1.03 ** (y - years[0])))}
-        for y in years
-    ]
+    items = predict_growth()
     return {"items": items}
 
 
 @app.get("/energy")
 def demo_energy():
-    # Simple daily curve
-    hours = list(range(24))
-    curve = [
-        5.0 if h < 6 else 8.0 if h < 9 else 6.5 if h < 16 else 9.5 if h < 20 else 6.0
-        for h in hours
-    ]
-    items = [{"hour": h, "demand_mwh": v} for h, v in zip(hours, curve)]
+    items = energy_profile()
     return {"items": items}
 
 
 @app.get("/traffic")
 def demo_traffic():
-    hours = list(range(24))
-    curve = [
-        (
-            150
-            if h < 6
-            else (
-                850 if h in (7, 8) else 400 if h < 16 else 900 if h in (17, 18) else 200
-            )
-        )
-        for h in hours
-    ]
-    items = [{"hour": h, "volume": v} for h, v in zip(hours, curve)]
+    items = traffic_profile()
     return {"items": items}
 
 

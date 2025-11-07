@@ -54,7 +54,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
     - Hooks include: Ruff (with autofix), Black, and Mypy
 - Type checking (mypy)
   - Install dev tools: `pip install -r requirements-dev.txt`
-  - Run type check: `mypy`
+  - Run type check: `mypy -p src -p backend`
 
 - Deployment (Render)
   - Build: `pip install -r requirements.txt`

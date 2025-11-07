@@ -24,6 +24,6 @@ jobs:
       - name: Format check (Black)
         run: black --check .
       - name: Type check (mypy)
-        run: mypy
+        run: mypy -p src -p backend
       - name: Tests
         run: pytest --cov=src --cov=backend --cov-report=term-missing -q

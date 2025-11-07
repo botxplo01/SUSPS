@@ -1,6 +1,12 @@
-from dash import Dash, html, dcc
+from dash import Dash, html, dcc, Input, Output
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
+import os
+import requests
+
+from src.models.growth import predict_growth as _predict_growth
+from src.models.energy import daily_profile as _energy_profile
+from src.models.traffic import daily_profile as _traffic_profile
 
 
 def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
@@ -95,22 +101,25 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                         [
                             dbc.Card(
                                 [
-                                    dbc.CardHeader("Welcome"),
+                                    dbc.CardHeader("Controls"),
                                     dbc.CardBody(
                                         [
+                                            html.P("Data source for demo charts"),
+                                            dcc.RadioItems(
+                                                id="data-source",
+                                                options=[
+                                                    {
+                                                        "label": "Demo (local)",
+                                                        "value": "demo",
+                                                    },
+                                                    {"label": "API", "value": "api"},
+                                                ],
+                                                value="demo",
+                                                inline=True,
+                                            ),
+                                            html.Hr(),
                                             html.P(
                                                 "Smart Urban Simulation and Prediction System"
-                                            ),
-                                            html.Ul(
-                                                [
-                                                    html.Li("Urban Growth (demo)"),
-                                                    html.Li(
-                                                        "Energy Forecasting (demo)"
-                                                    ),
-                                                    html.Li(
-                                                        "Traffic Simulation (demo)"
-                                                    ),
-                                                ]
                                             ),
                                         ]
                                     ),
@@ -121,10 +130,10 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                     ),
                     dbc.Col(
                         [
-                            dcc.Graph(figure=fig_readiness),
-                            dcc.Graph(figure=fig_growth),
-                            dcc.Graph(figure=fig_energy),
-                            dcc.Graph(figure=fig_traffic),
+                            dcc.Graph(id="readiness-graph", figure=fig_readiness),
+                            dcc.Graph(id="growth-graph", figure=fig_growth),
+                            dcc.Graph(id="energy-graph", figure=fig_energy),
+                            dcc.Graph(id="traffic-graph", figure=fig_traffic),
                         ],
                         width=9,
                     ),
@@ -133,5 +142,61 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
         ],
         fluid=True,
     )
+
+    @app.callback(
+        Output("growth-graph", "figure"),
+        Output("energy-graph", "figure"),
+        Output("traffic-graph", "figure"),
+        Input("data-source", "value"),
+    )
+    def _update_figs(source: str):
+        base = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
+
+        def _fig_growth(items):
+            years = [it["year"] for it in items]
+            values = [it["predicted_population"] for it in items]
+            return go.Figure(
+                data=[
+                    go.Scatter(
+                        x=years, y=values, mode="lines+markers", name="predicted"
+                    )
+                ],
+                layout=go.Layout(title_text="Demo: Growth (predicted population)"),
+            )
+
+        def _fig_energy(items):
+            hours = [it["hour"] for it in items]
+            vals = [it["demand_mwh"] for it in items]
+            return go.Figure(
+                data=[
+                    go.Scatter(
+                        x=hours, y=vals, mode="lines+markers", name="demand (MWh)"
+                    )
+                ],
+                layout=go.Layout(title_text="Demo: Energy (daily profile)"),
+            )
+
+        def _fig_traffic(items):
+            hours = [it["hour"] for it in items]
+            vals = [it["volume"] for it in items]
+            return go.Figure(
+                data=[go.Scatter(x=hours, y=vals, mode="lines+markers", name="volume")],
+                layout=go.Layout(title_text="Demo: Traffic (daily profile)"),
+            )
+
+        if source == "api":
+            try:
+                g = requests.get(f"{base}/growth", timeout=5).json().get("items", [])
+                e = requests.get(f"{base}/energy", timeout=5).json().get("items", [])
+                t = requests.get(f"{base}/traffic", timeout=5).json().get("items", [])
+                return _fig_growth(g), _fig_energy(e), _fig_traffic(t)
+            except Exception:
+                pass  # fall back to demo
+
+        # demo fallback
+        g = _predict_growth()
+        e = _energy_profile()
+        t = _traffic_profile()
+        return _fig_growth(g), _fig_energy(e), _fig_traffic(t)
 
     return app

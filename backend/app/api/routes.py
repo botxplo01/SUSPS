@@ -87,3 +87,61 @@ def list_traffic(db: Session = Depends(get_db)):
         return {"items": items}
     except Exception as e:
         return {"items": [], "detail": str(e)}
+
+
+@router.get("/energy/summary")
+def energy_summary(db: Session = Depends(get_db)):
+    try:
+        rows = (
+            db.query(
+                UrbanArea.area_id,
+                UrbanArea.name,
+                text("AVG(energy_consumption.predicted_demand) as predicted"),
+                text("AVG(energy_consumption.actual_demand) as actual"),
+            )
+            .join(EnergyConsumption, EnergyConsumption.area_id == UrbanArea.area_id)
+            .group_by(UrbanArea.area_id, UrbanArea.name)
+            .order_by(UrbanArea.area_id)
+            .all()
+        )
+        items = [
+            {
+                "area_id": r[0],
+                "area_name": r[1],
+                "predicted": float(r[2]) if r[2] is not None else None,
+                "actual": float(r[3]) if r[3] is not None else None,
+            }
+            for r in rows
+        ]
+        return {"items": items}
+    except Exception as e:
+        return {"items": [], "detail": str(e)}
+
+
+@router.get("/traffic/summary")
+def traffic_summary(db: Session = Depends(get_db)):
+    try:
+        rows = (
+            db.query(
+                UrbanArea.area_id,
+                UrbanArea.name,
+                text("AVG(traffic_flow.predicted_volume) as predicted"),
+                text("AVG(traffic_flow.actual_volume) as actual"),
+            )
+            .join(TrafficFlow, TrafficFlow.area_id == UrbanArea.area_id)
+            .group_by(UrbanArea.area_id, UrbanArea.name)
+            .order_by(UrbanArea.area_id)
+            .all()
+        )
+        items = [
+            {
+                "area_id": r[0],
+                "area_name": r[1],
+                "predicted_volume": int(r[2]) if r[2] is not None else None,
+                "actual_volume": int(r[3]) if r[3] is not None else None,
+            }
+            for r in rows
+        ]
+        return {"items": items}
+    except Exception as e:
+        return {"items": [], "detail": str(e)}
