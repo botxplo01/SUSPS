@@ -15,6 +15,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 - Tests (pytest)
   - All tests: `pytest -q`
+  - With coverage: `pytest --cov=src --cov=backend --cov-report=term-missing -q`
   - Single file: `pytest tests/test_api.py -q`
   - Single test: `pytest tests/test_api.py::test_health -q`
 
