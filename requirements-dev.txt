@@ -1,3 +1,5 @@
 ruff
 black
 pre-commit
+pytest-asyncio
+pytest-cov

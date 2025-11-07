@@ -26,6 +26,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - Outputs are written to `data/raw/` and `data/processed/` (see `README.md`).
 
 - Docker/PostGIS stack (optional, DB-enabled API)
+  - Copy env: `cp .env.example .env` (or create `.env`) to supply optional variables
   - Start services: `docker compose up --build`
     - API (FastAPI+Dash) listens on http://localhost:8000 with Dash at `/dash`
     - PostGIS is exposed on port 5432
