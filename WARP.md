@@ -47,6 +47,9 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - Git hooks (pre-commit):
     - Install: `pip install -r requirements-dev.txt && pre-commit install`
     - Run on all files: `pre-commit run --all-files`
+- Type checking (mypy)
+  - Install dev tools: `pip install -r requirements-dev.txt`
+  - Run type check: `mypy`
 
 - Deployment (Render)
   - Build: `pip install -r requirements.txt`

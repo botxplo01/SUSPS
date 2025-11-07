@@ -14,3 +14,11 @@ exclude = [
   ".venv",
   ".git",
 ]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src", "backend"]
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_ignores = true
+pretty = true
