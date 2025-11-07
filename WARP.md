@@ -87,4 +87,5 @@ SUSPS is organized around a lightweight FastAPI app that mounts a Dash UI, plus 
 Key URLs
 - Health: `/health`
 - Dashboard: `/dash/`
+- Non-DB demo API (Render path): `/growth`, `/energy`, `/traffic`
 - DB-backed API (Docker): `/areas`, `/energy`, `/traffic`, summaries at `/energy/summary`, `/traffic/summary`

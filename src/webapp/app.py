@@ -15,12 +15,55 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
         title="SUSPS Dashboard",
     )
 
-    # Simple sample chart without pandas
+    # Readiness chart
     modules = ["Growth", "Energy", "Traffic"]
     readiness = [10, 5, 2]
-    fig = go.Figure(
+    fig_readiness = go.Figure(
         data=[go.Bar(x=modules, y=readiness, marker_color="#1f77b4")],
         layout=go.Layout(title_text="Initial Module Readiness (placeholder)"),
+    )
+
+    # Synthetic charts (no-DB) — keep data inline to avoid HTTP coupling at app-creation time
+    growth_years = list(range(2025, 2031))
+    growth_values = [int(800_000 * (1.03 ** (i))) for i in range(len(growth_years))]
+    fig_growth = go.Figure(
+        data=[
+            go.Scatter(
+                x=growth_years, y=growth_values, mode="lines+markers", name="predicted"
+            )
+        ],
+        layout=go.Layout(title_text="Demo: Growth (predicted population)"),
+    )
+
+    hours = list(range(24))
+    energy_curve = [
+        5.0 if h < 6 else 8.0 if h < 9 else 6.5 if h < 16 else 9.5 if h < 20 else 6.0
+        for h in hours
+    ]
+    fig_energy = go.Figure(
+        data=[
+            go.Scatter(
+                x=hours, y=energy_curve, mode="lines+markers", name="demand (MWh)"
+            )
+        ],
+        layout=go.Layout(title_text="Demo: Energy (daily profile)"),
+    )
+
+    traffic_curve = [
+        (
+            150
+            if h < 6
+            else (
+                850 if h in (7, 8) else 400 if h < 16 else 900 if h in (17, 18) else 200
+            )
+        )
+        for h in hours
+    ]
+    fig_traffic = go.Figure(
+        data=[
+            go.Scatter(x=hours, y=traffic_curve, mode="lines+markers", name="volume")
+        ],
+        layout=go.Layout(title_text="Demo: Traffic (daily profile)"),
     )
 
     navbar = dbc.Navbar(
@@ -60,14 +103,12 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                                             ),
                                             html.Ul(
                                                 [
+                                                    html.Li("Urban Growth (demo)"),
                                                     html.Li(
-                                                        "Urban Growth (coming soon)"
+                                                        "Energy Forecasting (demo)"
                                                     ),
                                                     html.Li(
-                                                        "Energy Forecasting (coming soon)"
-                                                    ),
-                                                    html.Li(
-                                                        "Traffic Simulation (coming soon)"
+                                                        "Traffic Simulation (demo)"
                                                     ),
                                                 ]
                                             ),
@@ -76,9 +117,17 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                                 ]
                             )
                         ],
-                        width=4,
+                        width=3,
                     ),
-                    dbc.Col([dcc.Graph(figure=fig)], width=8),
+                    dbc.Col(
+                        [
+                            dcc.Graph(figure=fig_readiness),
+                            dcc.Graph(figure=fig_growth),
+                            dcc.Graph(figure=fig_energy),
+                            dcc.Graph(figure=fig_traffic),
+                        ],
+                        width=9,
+                    ),
                 ]
             ),
         ],

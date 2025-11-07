@@ -23,6 +23,47 @@ def health():
     return JSONResponse({"status": "ok", "service": "susps", "version": "0.1.0"})
 
 
+@app.get("/growth")
+def demo_growth():
+    base = 800_000
+    years = list(range(2025, 2031))
+    # Simple +3% growth per year
+    items = [
+        {"year": y, "predicted_population": int(base * (1.03 ** (y - years[0])))}
+        for y in years
+    ]
+    return {"items": items}
+
+
+@app.get("/energy")
+def demo_energy():
+    # Simple daily curve
+    hours = list(range(24))
+    curve = [
+        5.0 if h < 6 else 8.0 if h < 9 else 6.5 if h < 16 else 9.5 if h < 20 else 6.0
+        for h in hours
+    ]
+    items = [{"hour": h, "demand_mwh": v} for h, v in zip(hours, curve)]
+    return {"items": items}
+
+
+@app.get("/traffic")
+def demo_traffic():
+    hours = list(range(24))
+    curve = [
+        (
+            150
+            if h < 6
+            else (
+                850 if h in (7, 8) else 400 if h < 16 else 900 if h in (17, 18) else 200
+            )
+        )
+        for h in hours
+    ]
+    items = [{"hour": h, "volume": v} for h, v in zip(hours, curve)]
+    return {"items": items}
+
+
 # Redirect root to dashboard so primary URL works on Render
 @app.get("/")
 def root_redirect():
