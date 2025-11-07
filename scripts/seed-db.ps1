@@ -1,5 +1,9 @@
 Param(
-  [string]$File = ".\backend\app\seeds\seed_urban_areas.sql"
+  [string[]]$Files = @(
+    ".\\backend\\app\\seeds\\seed_urban_areas.sql",
+    ".\\backend\\app\\seeds\\seed_energy.sql",
+    ".\\backend\\app\\seeds\\seed_traffic.sql"
+  )
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,15 +18,20 @@ if (-not ($running -contains "db")) {
 # Apply migrations via API container (ensures extension/tables)
 docker compose exec -T api alembic upgrade head
 
-# Copy seed file into DB container and run it
+# Copy seed files into DB container and run them
 $dbId = docker compose ps -q db
 if (-not $dbId) { throw "DB container not found" }
 
-$dest = "$dbId" + ":/seed.sql"
-Write-Host "Copying seed file $File to container $dest"
-docker cp $File $dest
+foreach ($File in $Files) {
+  if (-not (Test-Path $File)) {
+    Write-Host "Skipping missing file: $File"
+    continue
+  }
+  $dest = "$dbId" + ":/seed.sql"
+  Write-Host "Copying seed file $File to container $dest"
+  docker cp $File $dest
+  Write-Host "Applying seed $File ..."
+  docker compose exec -T db psql -U postgres -d susps -v ON_ERROR_STOP=1 -f /seed.sql
+}
 
-Write-Host "Applying seed..."
-docker compose exec -T db psql -U postgres -d susps -v ON_ERROR_STOP=1 -f /seed.sql
-
-Write-Host "Seed applied successfully."
+Write-Host "All seeds applied successfully."
