@@ -33,6 +33,9 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
     - PostGIS is exposed on port 5432
   - Rebuild only API: `docker compose build api`
   - Apply DB migrations (inside container): `docker compose exec api alembic upgrade head`
+  - Seed demo areas (optional):
+    - PowerShell: `.\\scripts\\seed-db.ps1`
+    - Bash: `./scripts/seed-db.sh`
 
 - Linting/formatting
   - Install dev tools: `pip install -r requirements-dev.txt`
