@@ -114,7 +114,9 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                                                     },
                                                     {"label": "API", "value": "api"},
                                                 ],
-                                                value="demo",
+                                                value=os.getenv(
+                                                    "DEFAULT_DATA_SOURCE", "demo"
+                                                ),
                                                 inline=True,
                                             ),
                                             html.Hr(),

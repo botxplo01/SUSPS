@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.wsgi import WSGIMiddleware
+from a2wsgi import WSGIMiddleware
 from starlette.responses import JSONResponse
 from starlette.responses import RedirectResponse
+from pydantic import BaseModel
+import os
 
 from src.models.growth import predict_growth
 from src.models.energy import daily_profile as energy_profile
@@ -24,6 +26,28 @@ app.add_middleware(
 @app.get("/health")
 def health():
     return JSONResponse({"status": "ok", "service": "susps", "version": "0.1.0"})
+
+
+# Simple in-memory config for demo source selection on Render
+_DEFAULT_SOURCE = os.getenv("DEFAULT_DATA_SOURCE", "demo")
+
+
+class ConfigPayload(BaseModel):
+    data_source: str
+
+
+@app.get("/config")
+def get_config():
+    return {"data_source": _DEFAULT_SOURCE}
+
+
+@app.post("/config")
+def set_config(payload: ConfigPayload):
+    global _DEFAULT_SOURCE
+    if payload.data_source not in {"demo", "api"}:
+        return JSONResponse({"detail": "invalid data_source"}, status_code=400)
+    _DEFAULT_SOURCE = payload.data_source
+    return {"data_source": _DEFAULT_SOURCE}
 
 
 @app.get("/growth")
@@ -52,4 +76,5 @@ def root_redirect():
 
 # Mount Dash app under /dash
 _dash_app = create_dash_app(requests_pathname_prefix="/dash/")
-app.mount("/dash", WSGIMiddleware(_dash_app.server))
+# a2wsgi.WSGIMiddleware is a valid ASGI app; ignore type to satisfy mypy's signature expectations
+app.mount("/dash", WSGIMiddleware(_dash_app.server))  # type: ignore[arg-type]

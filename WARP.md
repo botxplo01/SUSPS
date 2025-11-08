@@ -18,6 +18,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - With coverage: `pytest --cov=src --cov=backend --cov-report=term-missing -q`
   - Single file: `pytest tests/test_api.py -q`
   - Single test: `pytest tests/test_api.py::test_health -q`
+  - Note: `pytest.ini` sets `pythonpath = .` and `asyncio_default_fixture_loop_scope = function` to avoid import errors and asyncio warnings.
 
 - Data pipeline
   - Ingest raw placeholders: `python -m src.pipeline.ingest`
@@ -60,6 +61,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - Build: `pip install -r requirements.txt`
   - Start: `gunicorn src.backend.api:app -k uvicorn.workers.UvicornWorker --timeout 120`
   - Health check path: `/health` (see `render.yaml`, `Procfile`).
+  - Dash mounting uses `a2wsgi.WSGIMiddleware` (replaces deprecated Starlette WSGI middleware).
 
 ## Architecture and structure (big picture)
 
@@ -87,8 +89,11 @@ SUSPS is organized around a lightweight FastAPI app that mounts a Dash UI, plus 
 Key URLs
 - Health: `/health`
 - Dashboard: `/dash/`
-- Non-DB demo API (Render path): `/growth`, `/energy`, `/traffic`
+- Non-DB demo API (Render path): `/growth`, `/energy`, `/traffic`, `/config` (GET/POST)
 - DB-backed API (Docker): `/areas`, `/energy`, `/traffic`, summaries at `/energy/summary`, `/traffic/summary`
+
+UI notes (Render):
+- The dashboard includes a "Data source" toggle (Demo | API). Default is controlled by env var `DEFAULT_DATA_SOURCE` (demo/api). The toggle updates Growth/Energy/Traffic charts by calling local model stubs or the API endpoints.
 
 Examples (non-DB demo responses, truncated):
 - `/growth`

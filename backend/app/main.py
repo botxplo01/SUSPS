@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.wsgi import WSGIMiddleware
+from a2wsgi import WSGIMiddleware
 
 from .api.routes import router as api_router
 from .dash_app import create_dash_app
@@ -20,4 +20,5 @@ app.include_router(api_router)
 
 # Mount Dash under /dash
 _dash = create_dash_app("/dash/")
-app.mount("/dash", WSGIMiddleware(_dash.server))
+# a2wsgi.WSGIMiddleware is a valid ASGI app; ignore type to satisfy mypy
+app.mount("/dash", WSGIMiddleware(_dash.server))  # type: ignore[arg-type]
