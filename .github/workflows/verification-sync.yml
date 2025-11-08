@@ -1,0 +1,67 @@
+name: Sync project Verification from labels
+
+on:
+  issues:
+    types: [labeled, unlabeled]
+
+permissions:
+  contents: read
+  issues: read
+
+env:
+  PROJECT_ID: PVT_kwHODEf8Cs4BHlR4
+  VERIFICATION_FIELD_ID: PVTSSF_lAHODEf8Cs4BHlR4zg4TAgo
+  OPTION_VERIFIED_ID: 87ab9463
+  OPTION_UNVERIFIED_ID: 3e93c611
+
+jobs:
+  sync:
+    if: github.event.label.name == 'verified'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync Verification field based on label
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PROJECTS_TOKEN || github.token }}
+          script: |
+            const isLabeled = context.payload.action === 'labeled';
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const number = context.payload.issue.number;
+
+            // 1) Look up the project item for this issue in the given Project ID
+            const q = `
+              query($owner:String!,$repo:String!,$number:Int!) {
+                repository(owner:$owner, name:$repo) {
+                  issue(number:$number) { id projectItems(first:50) { nodes { id project { id number title } } } }
+                }
+              }
+            `;
+            const qres = await github.graphql(q, { owner, repo, number });
+            const issue = qres.repository.issue;
+            if (!issue) { core.setFailed('Issue not found'); return; }
+            const item = issue.projectItems.nodes.find(n => n.project && n.project.id === process.env.PROJECT_ID);
+            if (!item) {
+              core.info('No matching project item found for this issue; skipping.');
+              return;
+            }
+
+            // 2) Set Verification single-select option depending on label add/remove
+            const optionId = isLabeled ? process.env.OPTION_VERIFIED_ID : process.env.OPTION_UNVERIFIED_ID;
+            const m = `
+              mutation($projectId:ID!, $itemId:ID!, $fieldId:ID!, $optionId:String!) {
+                updateProjectV2ItemFieldValue(input:{
+                  projectId:$projectId,
+                  itemId:$itemId,
+                  fieldId:$fieldId,
+                  value:{ singleSelectOptionId:$optionId }
+                }) { clientMutationId }
+              }
+            `;
+            await github.graphql(m, {
+              projectId: process.env.PROJECT_ID,
+              itemId: item.id,
+              fieldId: process.env.VERIFICATION_FIELD_ID,
+              optionId
+            });
+            core.info(`Verification set to ${isLabeled ? 'Verified' : 'Unverified'} for item ${item.id}`);
