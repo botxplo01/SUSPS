@@ -15,6 +15,7 @@ env:
   OPTION_UNVERIFIED_ID: 3e93c611
   STATUS_FIELD_ID: PVTSSF_lAHODEf8Cs4BHlR4zg4S5kI
   OPTION_DONE_ID: 98236657
+  OPTION_INPROGRESS_ID: 47fc9ee4
 
 jobs:
   sync:
@@ -68,7 +69,7 @@ jobs:
             });
             core.info(`Verification set to ${isLabeled ? 'Verified' : 'Unverified'} for item ${item.id}`);
 
-            // 3) If label was added, set Status to Done
+            // 3) Update Status based on label add/remove
             if (isLabeled) {
               await github.graphql(m, {
                 projectId: process.env.PROJECT_ID,
@@ -77,4 +78,12 @@ jobs:
                 optionId: process.env.OPTION_DONE_ID
               });
               core.info(`Status set to Done for item ${item.id}`);
+            } else {
+              await github.graphql(m, {
+                projectId: process.env.PROJECT_ID,
+                itemId: item.id,
+                fieldId: process.env.STATUS_FIELD_ID,
+                optionId: process.env.OPTION_INPROGRESS_ID
+              });
+              core.info(`Status set to In Progress for item ${item.id}`);
             }

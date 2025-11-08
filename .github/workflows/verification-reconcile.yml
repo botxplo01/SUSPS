@@ -2,7 +2,7 @@ name: Reconcile verified label from Project field
 
 on:
   workflow_dispatch:
-schedule:
+  schedule:
     - cron: '*/15 * * * *'
 
 permissions:
@@ -14,6 +14,9 @@ env:
   VERIFICATION_FIELD_ID: PVTSSF_lAHODEf8Cs4BHlR4zg4TAgo
   OPTION_VERIFIED_ID: 87ab9463
   OPTION_UNVERIFIED_ID: 3e93c611
+  STATUS_FIELD_ID: PVTSSF_lAHODEf8Cs4BHlR4zg4S5kI
+  OPTION_DONE_ID: 98236657
+  OPTION_INPROGRESS_ID: 47fc9ee4
 
 jobs:
   reconcile:
@@ -91,4 +94,25 @@ jobs:
                   core.warning(`Remove label failed for #${number}: ${e.message}`);
                 }
               }
+
+              // Keep Status aligned with Verification field as well
+              const statusFieldId = process.env.STATUS_FIELD_ID;
+              const optionId = shouldHave ? process.env.OPTION_DONE_ID : process.env.OPTION_INPROGRESS_ID;
+              const m = `
+                mutation($projectId:ID!, $itemId:ID!, $fieldId:ID!, $optionId:String!) {
+                  updateProjectV2ItemFieldValue(input:{
+                    projectId:$projectId,
+                    itemId:$itemId,
+                    fieldId:$fieldId,
+                    value:{ singleSelectOptionId:$optionId }
+                  }) { clientMutationId }
+                }
+              `;
+              await github.graphql(m, {
+                projectId: process.env.PROJECT_ID,
+                itemId: item.id,
+                fieldId: statusFieldId,
+                optionId
+              });
+              core.info(`Status set to ${shouldHave ? 'Done' : 'In Progress'} for item ${item.id}`);
             }
