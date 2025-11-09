@@ -32,3 +32,6 @@ logs/
 
 # Ruff
 .ruff_cache/
+
+# Temp / local artifacts
+/tmp_project_items.json
