@@ -70,12 +70,14 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
     # External stylesheets
     external_stylesheets = [dbc.themes.BOOTSTRAP]
 
+    assets_path = os.path.join(os.path.dirname(__file__), "assets")
     app = Dash(
         __name__,
         requests_pathname_prefix=requests_pathname_prefix,
         external_stylesheets=external_stylesheets,
         suppress_callback_exceptions=True,
         title="SUSPS Dashboard",
+        assets_folder=assets_path,
     )
 
     fig_readiness, fig_growth, fig_energy, fig_traffic = _make_figures()
@@ -84,9 +86,9 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
     def _sidebar(prefix: str) -> html.Div:
         return html.Div(
             [
-                html.H2("SUSPS", className="display-6"),
+                html.H2("SUSPS", className="display-6 mb-3"),
                 html.Hr(),
-                html.P("Data source for demo charts", className="text-muted"),
+                html.P("Data source for demo charts", className="text-secondary small"),
                 dcc.RadioItems(
                     id="data-source",
                     options=[
@@ -94,24 +96,43 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                         {"label": "API", "value": "api"},
                     ],
                     value=os.getenv("DEFAULT_DATA_SOURCE", "demo"),
+                    style={"marginBottom": "0.5rem"},
                 ),
                 html.Hr(),
                 dbc.Nav(
                     [
-                        dbc.NavLink("Dashboard", href=prefix, id="nav-dashboard"),
-                        dbc.NavLink("Growth", href=f"{prefix}growth", id="nav-growth"),
-                        dbc.NavLink("Energy", href=f"{prefix}energy", id="nav-energy"),
                         dbc.NavLink(
-                            "Traffic", href=f"{prefix}traffic", id="nav-traffic"
+                            "Dashboard",
+                            href=prefix,
+                            id="nav-dashboard",
+                            className="d-block w-100",
+                        ),
+                        dbc.NavLink(
+                            "Growth",
+                            href=f"{prefix}growth",
+                            id="nav-growth",
+                            className="d-block w-100",
+                        ),
+                        dbc.NavLink(
+                            "Energy",
+                            href=f"{prefix}energy",
+                            id="nav-energy",
+                            className="d-block w-100",
+                        ),
+                        dbc.NavLink(
+                            "Traffic",
+                            href=f"{prefix}traffic",
+                            id="nav-traffic",
+                            className="d-block w-100",
                         ),
                     ],
                     vertical=True,
-                    pills=True,
+                    pills=False,
                     className="mt-2",
                 ),
             ],
-            className="p-3 bg-light border min-vh-100",
-            style={"height": "100vh"},
+            className="sidebar p-3 text-light min-vh-100",
+            style={"height": "100vh", "backgroundColor": "#212529"},
         )
 
     # Content per route
@@ -184,13 +205,16 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                         _sidebar(requests_pathname_prefix), md=3, lg=2, className="px-0"
                     ),
                     dbc.Col(
-                        html.Div(id="page-content", className="pt-4 px-3"), md=9, lg=10
+                        html.Div(id="page-content", className="pt-5 px-4"), md=9, lg=10
                     ),
                 ],
                 className="g-0",
+                style={"margin": 0},
             ),
         ],
         fluid=True,
+        className="p-0",
+        style={"padding": 0},
     )
 
     # Activate nav item highlighting and render content
