@@ -110,8 +110,8 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                     className="mt-2",
                 ),
             ],
-            className="p-3 bg-light border rounded-3 sticky-top",
-            style={"minHeight": "90vh"},
+            className="p-3 bg-light border min-vh-100",
+            style={"height": "100vh"},
         )
 
     # Content per route
@@ -180,10 +180,14 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
             dcc.Location(id="url"),
             dbc.Row(
                 [
-                    dbc.Col(_sidebar(requests_pathname_prefix), md=3, lg=2),
-                    dbc.Col(html.Div(id="page-content"), md=9, lg=10),
+                    dbc.Col(
+                        _sidebar(requests_pathname_prefix), md=3, lg=2, className="px-0"
+                    ),
+                    dbc.Col(
+                        html.Div(id="page-content", className="pt-4 px-3"), md=9, lg=10
+                    ),
                 ],
-                className="gy-3",
+                className="g-0",
             ),
         ],
         fluid=True,
