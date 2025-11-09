@@ -1,4 +1,4 @@
-from dash import Dash, html, dcc, Input, Output
+from dash import Dash, html, dcc, Input, Output, State
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import os
@@ -9,19 +9,9 @@ from src.models.energy import daily_profile as _energy_profile
 from src.models.traffic import daily_profile as _traffic_profile
 
 
-def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
-    # External stylesheets
-    external_stylesheets = [dbc.themes.BOOTSTRAP]
-
-    app = Dash(
-        __name__,
-        requests_pathname_prefix=requests_pathname_prefix,
-        external_stylesheets=external_stylesheets,
-        suppress_callback_exceptions=True,
-        title="SUSPS Dashboard",
-    )
-
-    # Readiness chart
+def _make_figures():
+    """Return initial placeholder figures for readiness, growth, energy, traffic."""
+    # Readiness chart (placeholder progress)
     modules = ["Growth", "Energy", "Traffic"]
     readiness = [10, 5, 2]
     fig_readiness = go.Figure(
@@ -29,7 +19,7 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
         layout=go.Layout(title_text="Initial Module Readiness (placeholder)"),
     )
 
-    # Synthetic charts (no-DB) — keep data inline to avoid HTTP coupling at app-creation time
+    # Growth (demo)
     growth_years = list(range(2025, 2031))
     growth_values = [int(800_000 * (1.03 ** (i))) for i in range(len(growth_years))]
     fig_growth = go.Figure(
@@ -41,6 +31,7 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
         layout=go.Layout(title_text="Demo: Growth (predicted population)"),
     )
 
+    # Energy (demo)
     hours = list(range(24))
     energy_curve = [
         5.0 if h < 6 else 8.0 if h < 9 else 6.5 if h < 16 else 9.5 if h < 20 else 6.0
@@ -55,6 +46,7 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
         layout=go.Layout(title_text="Demo: Energy (daily profile)"),
     )
 
+    # Traffic (demo)
     traffic_curve = [
         (
             150
@@ -71,87 +63,160 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
         ],
         layout=go.Layout(title_text="Demo: Traffic (daily profile)"),
     )
+    return fig_readiness, fig_growth, fig_energy, fig_traffic
 
-    navbar = dbc.Navbar(
-        dbc.Container(
-            [
-                dbc.NavbarBrand("SUSPS", href="#"),
-                dbc.Nav(
-                    [
-                        dbc.NavItem(
-                            dbc.NavLink("Dashboard", href=requests_pathname_prefix)
-                        ),
-                    ],
-                    className="ms-auto",
-                    navbar=True,
-                ),
-            ]
-        ),
-        color="dark",
-        dark=True,
-        className="mb-4",
+
+def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
+    # External stylesheets
+    external_stylesheets = [dbc.themes.BOOTSTRAP]
+
+    app = Dash(
+        __name__,
+        requests_pathname_prefix=requests_pathname_prefix,
+        external_stylesheets=external_stylesheets,
+        suppress_callback_exceptions=True,
+        title="SUSPS Dashboard",
     )
 
+    fig_readiness, fig_growth, fig_energy, fig_traffic = _make_figures()
+
+    # Sidebar builder
+    def _sidebar(prefix: str) -> html.Div:
+        return html.Div(
+            [
+                html.H2("SUSPS", className="display-6"),
+                html.Hr(),
+                html.P("Data source for demo charts", className="text-muted"),
+                dcc.RadioItems(
+                    id="data-source",
+                    options=[
+                        {"label": "Demo (local)", "value": "demo"},
+                        {"label": "API", "value": "api"},
+                    ],
+                    value=os.getenv("DEFAULT_DATA_SOURCE", "demo"),
+                ),
+                html.Hr(),
+                dbc.Nav(
+                    [
+                        dbc.NavLink("Dashboard", href=prefix, id="nav-dashboard"),
+                        dbc.NavLink("Growth", href=f"{prefix}growth", id="nav-growth"),
+                        dbc.NavLink("Energy", href=f"{prefix}energy", id="nav-energy"),
+                        dbc.NavLink(
+                            "Traffic", href=f"{prefix}traffic", id="nav-traffic"
+                        ),
+                    ],
+                    vertical=True,
+                    pills=True,
+                    className="mt-2",
+                ),
+            ],
+            className="p-3 bg-light border rounded-3 sticky-top",
+            style={"minHeight": "90vh"},
+        )
+
+    # Content per route
+    def _dashboard_content():
+        return html.Div(
+            [
+                html.H3("Overview"),
+                dcc.Graph(id="readiness-graph", figure=fig_readiness),
+                html.Hr(),
+                dbc.Row(
+                    [
+                        dbc.Col(dcc.Graph(id="growth-graph", figure=fig_growth), md=6),
+                        dbc.Col(dcc.Graph(id="energy-graph", figure=fig_energy), md=6),
+                    ]
+                ),
+                dbc.Row(
+                    [dbc.Col(dcc.Graph(id="traffic-graph", figure=fig_traffic), md=12)]
+                ),
+            ]
+        )
+
+    def _growth_content():
+        return html.Div(
+            [
+                html.H3("Growth"),
+                html.P("Projected population by year."),
+                dcc.Graph(id="growth-graph", figure=fig_growth),
+            ]
+        )
+
+    def _energy_content():
+        return html.Div(
+            [
+                html.H3("Energy"),
+                html.P("Daily energy demand profile (MWh)."),
+                dcc.Graph(id="energy-graph", figure=fig_energy),
+            ]
+        )
+
+    def _traffic_content():
+        return html.Div(
+            [
+                html.H3("Traffic"),
+                html.P("Hourly traffic volume profile."),
+                dcc.Graph(id="traffic-graph", figure=fig_traffic),
+            ]
+        )
+
+    def _render_content(pathname: str) -> html.Div:
+        # Normalize by stripping the dash prefix so routes work under /dash/
+        prefix = (requests_pathname_prefix or "/").rstrip("/") + "/"
+        if pathname in (prefix, prefix.rstrip("/")):
+            return _dashboard_content()
+        if pathname.startswith(f"{prefix}growth"):
+            return _growth_content()
+        if pathname.startswith(f"{prefix}energy"):
+            return _energy_content()
+        if pathname.startswith(f"{prefix}traffic"):
+            return _traffic_content()
+        # Fallback
+        return _dashboard_content()
+
+    # Layout: sidebar left, content right
     app.layout = dbc.Container(
         [
-            navbar,
+            dcc.Location(id="url"),
             dbc.Row(
                 [
-                    dbc.Col(
-                        [
-                            dbc.Card(
-                                [
-                                    dbc.CardHeader("Controls"),
-                                    dbc.CardBody(
-                                        [
-                                            html.P("Data source for demo charts"),
-                                            dcc.RadioItems(
-                                                id="data-source",
-                                                options=[
-                                                    {
-                                                        "label": "Demo (local)",
-                                                        "value": "demo",
-                                                    },
-                                                    {"label": "API", "value": "api"},
-                                                ],
-                                                value=os.getenv(
-                                                    "DEFAULT_DATA_SOURCE", "demo"
-                                                ),
-                                                inline=True,
-                                            ),
-                                            html.Hr(),
-                                            html.P(
-                                                "Smart Urban Simulation and Prediction System"
-                                            ),
-                                        ]
-                                    ),
-                                ]
-                            )
-                        ],
-                        width=3,
-                    ),
-                    dbc.Col(
-                        [
-                            dcc.Graph(id="readiness-graph", figure=fig_readiness),
-                            dcc.Graph(id="growth-graph", figure=fig_growth),
-                            dcc.Graph(id="energy-graph", figure=fig_energy),
-                            dcc.Graph(id="traffic-graph", figure=fig_traffic),
-                        ],
-                        width=9,
-                    ),
-                ]
+                    dbc.Col(_sidebar(requests_pathname_prefix), md=3, lg=2),
+                    dbc.Col(html.Div(id="page-content"), md=9, lg=10),
+                ],
+                className="gy-3",
             ),
         ],
         fluid=True,
     )
 
+    # Activate nav item highlighting and render content
+    @app.callback(
+        Output("page-content", "children"),
+        Output("nav-dashboard", "active"),
+        Output("nav-growth", "active"),
+        Output("nav-energy", "active"),
+        Output("nav-traffic", "active"),
+        Input("url", "pathname"),
+        prevent_initial_call=False,
+    )
+    def _route(pathname: str):
+        prefix = (requests_pathname_prefix or "/").rstrip("/") + "/"
+        content = _render_content(pathname or prefix)
+        active_dashboard = (pathname or prefix) == prefix
+        active_growth = (pathname or "").startswith(f"{prefix}growth")
+        active_energy = (pathname or "").startswith(f"{prefix}energy")
+        active_traffic = (pathname or "").startswith(f"{prefix}traffic")
+        return content, active_dashboard, active_growth, active_energy, active_traffic
+
+    # Figures update based on data source toggle
     @app.callback(
         Output("growth-graph", "figure"),
         Output("energy-graph", "figure"),
         Output("traffic-graph", "figure"),
         Input("data-source", "value"),
+        State("url", "pathname"),
     )
-    def _update_figs(source: str):
+    def _update_figs(source: str, _pathname: str):
         base = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 
         def _fig_growth(items):
