@@ -9,6 +9,43 @@ from src.models.energy import daily_profile as _energy_profile
 from src.models.traffic import daily_profile as _traffic_profile
 
 
+def _placeholder_map(el_id: str, title: str) -> html.Div:
+    return html.Div(
+        [
+            html.Div(
+                title,
+                className="text-muted",
+                style={"position": "absolute", "top": "8px", "left": "12px"},
+            )
+        ],
+        id=el_id,
+        style={
+            "height": "320px",
+            "backgroundColor": "#e9ecef",
+            "border": "1px dashed #adb5bd",
+            "borderRadius": "4px",
+            "position": "relative",
+            "display": "flex",
+            "alignItems": "center",
+            "justifyContent": "center",
+        },
+        children=html.Span("Map area", className="text-secondary"),
+    )
+
+
+def _placeholder_table(title: str) -> html.Div:
+    header = html.Thead(
+        html.Tr([html.Th("Column A"), html.Th("Column B"), html.Th("Column C")])
+    )
+    rows = [
+        html.Tr([html.Td("A1"), html.Td("B1"), html.Td("C1")]),
+        html.Tr([html.Td("A2"), html.Td("B2"), html.Td("C2")]),
+        html.Tr([html.Td("A3"), html.Td("B3"), html.Td("C3")]),
+    ]
+    table = dbc.Table([header, html.Tbody(rows)], bordered=True, hover=True, size="sm")
+    return html.Div([html.Div(title, className="text-muted mb-2"), table])
+
+
 def _make_figures():
     """Return initial placeholder figures for readiness, growth, energy, traffic."""
     # Readiness chart (placeholder progress)
@@ -131,8 +168,8 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                     className="mt-2",
                 ),
             ],
-            className="sidebar p-3 text-light min-vh-100",
-            style={"height": "100vh", "backgroundColor": "#212529"},
+            className="sidebar sidebar-fixed p-3 text-light",
+            style={"backgroundColor": "#212529"},
         )
 
     # Content per route
@@ -151,6 +188,15 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                 dbc.Row(
                     [dbc.Col(dcc.Graph(id="traffic-graph", figure=fig_traffic), md=12)]
                 ),
+                html.Hr(),
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            _placeholder_map("dashboard-map", "Map placeholder"), md=6
+                        ),
+                        dbc.Col(_placeholder_table("Table placeholder"), md=6),
+                    ]
+                ),
             ]
         )
 
@@ -160,6 +206,13 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                 html.H3("Growth"),
                 html.P("Projected population by year."),
                 dcc.Graph(id="growth-graph", figure=fig_growth),
+                html.Hr(),
+                dbc.Row(
+                    [
+                        dbc.Col(_placeholder_map("growth-map", "Growth map"), md=6),
+                        dbc.Col(_placeholder_table("Growth table"), md=6),
+                    ]
+                ),
             ]
         )
 
@@ -169,6 +222,13 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                 html.H3("Energy"),
                 html.P("Daily energy demand profile (MWh)."),
                 dcc.Graph(id="energy-graph", figure=fig_energy),
+                html.Hr(),
+                dbc.Row(
+                    [
+                        dbc.Col(_placeholder_map("energy-map", "Energy map"), md=6),
+                        dbc.Col(_placeholder_table("Energy table"), md=6),
+                    ]
+                ),
             ]
         )
 
@@ -178,6 +238,13 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                 html.H3("Traffic"),
                 html.P("Hourly traffic volume profile."),
                 dcc.Graph(id="traffic-graph", figure=fig_traffic),
+                html.Hr(),
+                dbc.Row(
+                    [
+                        dbc.Col(_placeholder_map("traffic-map", "Traffic map"), md=6),
+                        dbc.Col(_placeholder_table("Traffic table"), md=6),
+                    ]
+                ),
             ]
         )
 
@@ -195,26 +262,18 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
         # Fallback
         return _dashboard_content()
 
-    # Layout: sidebar left, content right
-    app.layout = dbc.Container(
+    # Layout: fixed sidebar and content with left offset
+    app.layout = html.Div(
         [
             dcc.Location(id="url"),
-            dbc.Row(
-                [
-                    dbc.Col(
-                        _sidebar(requests_pathname_prefix), md=3, lg=2, className="px-0"
-                    ),
-                    dbc.Col(
-                        html.Div(id="page-content", className="pt-5 px-4"), md=9, lg=10
-                    ),
-                ],
-                className="g-0",
-                style={"margin": 0},
+            _sidebar(requests_pathname_prefix),
+            dbc.Container(
+                html.Div(id="page-content", className="pt-5 px-4 content-offset"),
+                fluid=True,
+                className="p-0",
+                style={"padding": 0},
             ),
-        ],
-        fluid=True,
-        className="p-0",
-        style={"padding": 0},
+        ]
     )
 
     # Activate nav item highlighting and render content

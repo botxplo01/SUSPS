@@ -3,6 +3,17 @@
   background-color: #212529 !important; /* dark grey */
   color: #f8f9fa;
 }
+.sidebar-fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 260px;
+  z-index: 1030;
+}
+.content-offset {
+  margin-left: 260px;
+}
 .sidebar .nav-link {
   color: #ced4da; /* light muted text */
   border-radius: 0 !important; /* square corners */
