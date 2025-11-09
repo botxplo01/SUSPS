@@ -1,3 +1,9 @@
+/* Reset body margin so sidebar is flush to viewport */
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
 /* Sidebar theming */
 .sidebar {
   background-color: #212529 !important; /* dark grey */

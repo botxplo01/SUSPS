@@ -16,7 +16,8 @@ def _placeholder_map(el_id: str, title: str) -> html.Div:
                 title,
                 className="text-muted",
                 style={"position": "absolute", "top": "8px", "left": "12px"},
-            )
+            ),
+            html.Span("Map area", className="text-secondary"),
         ],
         id=el_id,
         style={
@@ -29,7 +30,6 @@ def _placeholder_map(el_id: str, title: str) -> html.Div:
             "alignItems": "center",
             "justifyContent": "center",
         },
-        children=html.Span("Map area", className="text-secondary"),
     )
 
 
