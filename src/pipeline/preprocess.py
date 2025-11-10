@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import pandas as pd
 
 from . import config
@@ -231,6 +232,128 @@ def preprocess_socioeconomic() -> Path:
     return out
 
 
+def preprocess_urban_growth() -> tuple[Path, Path]:
+    """Integrate Urban_Growth directory by producing a catalog and simple features.
+
+    - Reads files under GRID3_SETTLEMENTS_PATH (or SETTLEMENTS_PATH) if available
+    - For CSVs: counts records and tries to sum area if an area-like column is present
+    - For SHP/GPKG: attempts geopandas if installed; otherwise catalogs only
+    - Outputs:
+      - urban_growth_catalog.csv: file metadata and basic info
+      - urban_growth_features.csv: per-year summary of records (and area if derivable)
+    """
+    config.ensure_dirs()
+    root = getattr(config, "SETTLEMENTS_PATH", None)
+    if not root or not Path(root).exists():
+        raise FileNotFoundError(
+            "GRID3_SETTLEMENTS_PATH / SETTLEMENTS_PATH not configured or missing"
+        )
+
+    root_path = Path(root)
+    rows = []
+    feats = {}
+
+    def parse_year(name: str) -> int | None:
+        m = re.search(r"(20\d{2}|19\d{2})", name)
+        return int(m.group(1)) if m else None
+
+    # Optional geopandas
+    try:
+        import geopandas as gpd  # type: ignore
+
+        has_gpd = True
+    except Exception:
+        has_gpd = False
+
+    for p in root_path.rglob("*"):
+        if not p.is_file():
+            continue
+        ext = p.suffix.lower()
+        year = parse_year(p.name)
+        size = p.stat().st_size
+        entry = {
+            "path": str(p),
+            "name": p.name,
+            "ext": ext,
+            "bytes": size,
+            "year": year,
+        }
+
+        if ext == ".csv":
+            try:
+                df = pd.read_csv(p)
+                entry["records"] = int(len(df))
+                # area-like column
+                area_col = next(
+                    (
+                        c
+                        for c in df.columns
+                        if re.search(r"area|km2|sqkm", str(c), re.I)
+                    ),
+                    None,
+                )
+                total_area = float(df[area_col].sum()) if area_col is not None else None
+                if total_area is not None:
+                    entry["area_km2"] = total_area
+                    if year is not None:
+                        feats.setdefault(year, {"records": 0, "area_km2": 0.0})
+                        feats[year]["area_km2"] += total_area
+                if year is not None:
+                    feats.setdefault(
+                        year,
+                        {
+                            "records": 0,
+                            "area_km2": feats.get(year, {}).get("area_km2", 0.0),
+                        },
+                    )
+                    feats[year]["records"] += int(len(df))
+            except Exception:
+                pass
+        elif ext in {".shp", ".gpkg"}:
+            if has_gpd:
+                try:
+                    gdf = gpd.read_file(p)
+                    entry["records"] = int(len(gdf))
+                    # approximate area in km2 if projected; else skip
+                    area_km2 = None
+                    if gdf.crs is not None and not gdf.crs.is_geographic:
+                        with pd.option_context("mode.use_inf_as_na", True):
+                            area_km2 = float((gdf.geometry.area.sum()) / 1_000_000.0)
+                    entry["area_km2"] = area_km2
+                    if year is not None:
+                        feats.setdefault(year, {"records": 0, "area_km2": 0.0})
+                        feats[year]["records"] += int(len(gdf))
+                        if area_km2:
+                            feats[year]["area_km2"] += area_km2
+                except Exception:
+                    pass
+        rows.append(entry)
+
+    # Write catalog
+    catalog = pd.DataFrame(rows)
+    cat_out = config.PROCESSED_DIR / "urban_growth_catalog.csv"
+    catalog.to_csv(cat_out, index=False)
+
+    # Write features summary
+    if feats:
+        years = sorted(feats.keys())
+        feat_rows = [
+            {
+                "year": y,
+                "records": feats[y]["records"],
+                "area_km2": feats[y].get("area_km2"),
+            }
+            for y in years
+        ]
+        feats_df = pd.DataFrame(feat_rows)
+    else:
+        feats_df = pd.DataFrame(columns=["year", "records", "area_km2"])  # empty
+    feat_out = config.PROCESSED_DIR / "urban_growth_features.csv"
+    feats_df.to_csv(feat_out, index=False)
+
+    return cat_out, feat_out
+
+
 def main() -> None:
     wp = preprocess_worldpop()
     en = preprocess_energy()
@@ -248,6 +371,15 @@ def main() -> None:
         config.RAW_DIR / "Air_Quality_Data_2025.csv"
     ).exists():
         aq = preprocess_air_quality()
+
+    # Urban growth (optional, requires SETTLEMENTS_PATH / GRID3_SETTLEMENTS_PATH)
+    ug = None
+    try:
+        ug_cat, ug_feat = preprocess_urban_growth()
+        ug = (ug_cat, ug_feat)
+    except Exception:
+        ug = None
+
     se = preprocess_socioeconomic()
     print(f"Saved: {wp}")
     print(f"Saved: {en}")
@@ -257,6 +389,9 @@ def main() -> None:
         print(f"Saved: {cen}")
     if aq:
         print(f"Saved: {aq}")
+    if ug:
+        print(f"Saved: {ug[0]}")
+        print(f"Saved: {ug[1]}")
     print(f"Saved: {se}")
 
 

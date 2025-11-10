@@ -12,9 +12,12 @@ venv/
 !/data/raw/.gitkeep
 /data/processed/*
 !/data/processed/.gitkeep
+
+# Data Sources and Integration Refs
 data_integration_guide.md
 data_sources.md
 data_sources_tree.md
+data_integration_guide_v4.md
 
 # Build / Dist
 /dist/*
