@@ -7,6 +7,29 @@ import pandas as pd
 from src.pipeline import config as _cfg
 
 
+def forecast_from_processed(
+    processed_dir: Path | None = None,
+) -> List[Dict[str, int]]:
+    """Read precomputed city forecast if available."""
+    try:
+        pdir = processed_dir or _cfg.PROCESSED_DIR
+        f = pdir / "growth_forecast_city.csv"
+        if not f.exists():
+            raise FileNotFoundError
+        import pandas as pd  # local import safe
+
+        df = pd.read_csv(f)
+        return [
+            {
+                "year": int(r["year"]),
+                "predicted_population": int(r["predicted_population"]),
+            }
+            for _, r in df.iterrows()
+        ]
+    except Exception:
+        return []
+
+
 def predict_growth(
     start_population: int = 800_000,
     start_year: int = 2025,

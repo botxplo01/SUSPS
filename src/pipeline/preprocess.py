@@ -94,6 +94,39 @@ def preprocess_census() -> Path:
     return out_path
 
 
+def preprocess_growth_forecast(horizon_years: int = 6) -> Path:
+    """Produce a city-level growth forecast CSV from census_trend.csv.
+
+    Output: growth_forecast_city.csv with columns: year, predicted_population, scenario
+    """
+    config.ensure_dirs()
+    cens = config.PROCESSED_DIR / "census_trend.csv"
+    if not cens.exists():
+        raise FileNotFoundError(
+            "census_trend.csv not found; run preprocess_census first"
+        )
+    df = pd.read_csv(cens).sort_values("year")
+    base_year = int(df["year"].iloc[-1])
+    base_pop = float(df["total_population"].iloc[-1])
+    rate_series = df.get("annual_rate")
+    if rate_series is None or rate_series.isna().all():
+        rate_series = df["total_population"].pct_change()
+    recent = rate_series.dropna().tail(3)
+    r = float(recent.mean()) if len(recent) else 0.03
+    r = max(min(r, 0.08), -0.02)
+    rows = []
+    pop = base_pop
+    for i in range(1, horizon_years + 1):
+        year = base_year + i
+        pop = pop * (1.0 + r)
+        rows.append(
+            {"year": year, "predicted_population": int(pop), "scenario": "base"}
+        )
+    out = config.PROCESSED_DIR / "growth_forecast_city.csv"
+    pd.DataFrame(rows).to_csv(out, index=False)
+    return out
+
+
 def preprocess_worldpop() -> Path:
     config.ensure_dirs()
     src = config.RAW_DIR / "worldpop_summary.csv"
@@ -365,6 +398,12 @@ def main() -> None:
         cen = preprocess_census()
     except Exception:
         cen = None
+    # If census trend exists, generate city growth forecast
+    gfc = None
+    try:
+        gfc = preprocess_growth_forecast()
+    except Exception:
+        gfc = None
     aq = None
     # Only preprocess air quality if a raw input exists
     if (config.RAW_DIR / "air_quality_raw.csv").exists() or (
@@ -387,6 +426,8 @@ def main() -> None:
     print(f"Saved: {env}")
     if cen:
         print(f"Saved: {cen}")
+    if gfc:
+        print(f"Saved: {gfc}")
     if aq:
         print(f"Saved: {aq}")
     if ug:

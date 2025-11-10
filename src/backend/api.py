@@ -6,7 +6,12 @@ from starlette.responses import RedirectResponse
 from pydantic import BaseModel
 import os
 
-from src.models.growth import predict_growth, predict_from_processed, growth_from_census
+from src.models.growth import (
+    predict_growth,
+    predict_from_processed,
+    growth_from_census,
+    forecast_from_processed,
+)
 from src.models.energy import (
     daily_profile as energy_profile,
     daily_profile_from_processed as energy_profile_from_processed,
@@ -58,7 +63,13 @@ def set_config(payload: ConfigPayload):
 
 @app.get("/growth")
 def demo_growth():
-    # Prefer census-based forecast, then processed-scaled, then synthetic
+    # Prefer precomputed forecast, then census-based, then processed-scaled, then synthetic
+    try:
+        items = forecast_from_processed()
+        if items:
+            return {"items": items}
+    except Exception:
+        pass
     try:
         items = growth_from_census()
         if items:
@@ -109,3 +120,52 @@ def root_redirect():
 _dash_app = create_dash_app(requests_pathname_prefix="/dash/")
 # a2wsgi.WSGIMiddleware is a valid ASGI app; ignore type to satisfy mypy's signature expectations
 app.mount("/dash", WSGIMiddleware(_dash_app.server))  # type: ignore[arg-type]
+
+
+# Optional summaries
+@app.get("/energy/summary")
+def energy_summary():
+    try:
+        import pandas as pd
+        from src.pipeline import config as _cfg
+
+        f = _cfg.PROCESSED_DIR / "energy_features.csv"
+        if not f.exists():
+            return {"items": []}
+        df = pd.read_csv(f)
+        items = [
+            {
+                "area_name": "Nairobi",
+                "sector": str(r["sector"]),
+                "demand_mwh": float(r["demand_mwh"]),
+                "pct": float(r.get("pct", 0.0)),
+            }
+            for _, r in df.iterrows()
+        ]
+        return {"items": items}
+    except Exception:
+        return {"items": []}
+
+
+@app.get("/traffic/summary")
+def traffic_summary():
+    try:
+        import pandas as pd
+        from src.pipeline import config as _cfg
+
+        f = _cfg.PROCESSED_DIR / "traffic_features.csv"
+        if not f.exists():
+            return {"items": []}
+        df = pd.read_csv(f)
+        g = df.groupby("hour")["veh_per_hour"].mean().reset_index()
+        items = [
+            {
+                "area_name": "Nairobi",
+                "hour": int(r["hour"]),
+                "avg_veh_per_hour": float(r["veh_per_hour"]),
+            }
+            for _, r in g.iterrows()
+        ]
+        return {"items": items}
+    except Exception:
+        return {"items": []}
