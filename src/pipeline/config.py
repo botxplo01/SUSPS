@@ -27,6 +27,7 @@ def ensure_dirs() -> None:
 
 @dataclass(frozen=True)
 class Defaults:
+    # Note: Region defaults are placeholders; use .env paths for actual data
     region: str = "Zambia"
     seed: int = 42
     worldpop_country_code: str = "ZMB"
@@ -38,19 +39,38 @@ def _env_path(name: str) -> Optional[Path]:
     return Path(val) if val else None
 
 
-# Paths for external datasets (from data_integration_guide)
+# Paths for external datasets (match .env names, provide aliases for compatibility)
+# Demographics & Population
 WORLDPOP_PATH: Optional[Path] = _env_path("WORLDPOP_PATH")
-CENSUS_PATH: Optional[Path] = _env_path("CENSUS_PATH")
+GRID3_POP_PATH: Optional[Path] = _env_path("GRID3_POP_PATH")
+POP_ANNUAL_CHANGE_PATH: Optional[Path] = _env_path("POP_ANNUAL_CHANGE_PATH")
+CENSUS_TOTAL_PATH: Optional[Path] = _env_path("CENSUS_TOTAL_PATH")
+# Back-compat alias if older env name is used
+CENSUS_PATH: Optional[Path] = CENSUS_TOTAL_PATH or _env_path("CENSUS_PATH")
+
+# Mobility & Transport
 MATATUS_PATH: Optional[Path] = _env_path("MATATUS_PATH")
 OSM_PATH: Optional[Path] = _env_path("OSM_PATH")
-COPERNICUS_PATH: Optional[Path] = _env_path("COPERNICUS_PATH")
-ENERGY_PATH: Optional[Path] = _env_path("ENERGY_PATH")
+
+# Environmental & Climate (Copernicus/Land cover)
+LANDCOVER_PATH_2015: Optional[Path] = _env_path("LANDCOVER_PATH_2015")
+COPERNICUS_PATH: Optional[Path] = _env_path("COPERNICUS_PATH") or LANDCOVER_PATH_2015
+
+# Energy & Infrastructure (directory with multiple files)
+ENERGY_DIR: Optional[Path] = _env_path("ENERGY")
+ENERGY_PATH: Optional[Path] = _env_path("ENERGY_PATH") or ENERGY_DIR
+
+# Smart City & Urban Growth (directory with multiple files)
+GRID3_SETTLEMENTS_PATH: Optional[Path] = _env_path("GRID3_SETTLEMENTS_PATH")
+SETTLEMENTS_PATH: Optional[Path] = _env_path("SETTLEMENTS_PATH") or GRID3_SETTLEMENTS_PATH
+
+# Optional datasets
 NIGHTLIGHTS_PATH: Optional[Path] = _env_path("NIGHTLIGHTS_PATH")
 GHSL_PATH: Optional[Path] = _env_path("GHSL_PATH")
-SETTLEMENTS_PATH: Optional[Path] = _env_path("SETTLEMENTS_PATH")
 
 
-# API keys (do not hardcode secrets)
+# API keys (do not hardcode secrets) — prefer .env names
 GOOGLE_MAPS_API_KEY: Optional[str] = os.getenv("GOOGLE_MAPS_API_KEY")
-AIRQO_API_KEY: Optional[str] = os.getenv("AIRQO_API_KEY")
+OPEN_AQ_API_KEY: Optional[str] = os.getenv("OPEN_AQ_API_KEY")
 OPENWEATHER_API_KEY: Optional[str] = os.getenv("OPENWEATHER_API_KEY")
+TOMTOM_API_KEY: Optional[str] = os.getenv("TOMTOM_API_KEY")
