@@ -6,6 +6,93 @@ import pandas as pd
 from . import config
 
 
+def preprocess_census() -> Path:
+    """Create a tidy census trend table: year, total_population, annual_rate.
+
+    Uses CENSUS_TOTAL_PATH and POP_ANNUAL_CHANGE_PATH if available.
+    If only totals are available, computes annual_rate from consecutive years.
+    """
+    config.ensure_dirs()
+    totals = getattr(config, "CENSUS_PATH", None)
+    changes = getattr(config, "POP_ANNUAL_CHANGE_PATH", None)
+    if not totals or not Path(totals).exists():
+        raise FileNotFoundError(
+            "Missing census totals file (CENSUS_PATH / CENSUS_TOTAL_PATH)"
+        )
+
+    df_tot = pd.read_csv(Path(totals))
+    # Normalize columns
+    df_tot.columns = [str(c).strip().lower() for c in df_tot.columns]
+    # Try to identify year and population columns
+    year_col = next((c for c in df_tot.columns if c in {"year", "yr"}), None)
+    pop_col = next(
+        (
+            c
+            for c in df_tot.columns
+            if any(k in c for k in ["total_population", "population", "total", "pop"])
+            and pd.api.types.is_numeric_dtype(df_tot[c])
+        ),
+        None,
+    )
+    if not year_col or not pop_col:
+        raise ValueError(
+            "Could not identify year and population columns in census totals"
+        )
+
+    df_tot = df_tot[[year_col, pop_col]].rename(
+        columns={year_col: "year", pop_col: "total_population"}
+    )
+    df_tot = df_tot.dropna(subset=["year", "total_population"]).copy()
+    df_tot["year"] = df_tot["year"].astype(int)
+    df_tot = df_tot.sort_values("year").reset_index(drop=True)
+
+    # Optional: changes file
+    rate_from_changes = None
+    if changes and Path(changes).exists():
+        df_ch = pd.read_csv(Path(changes))
+        df_ch.columns = [str(c).strip().lower() for c in df_ch.columns]
+        ycol = next((c for c in df_ch.columns if c in {"year", "yr"}), None)
+        rcol = next(
+            (
+                c
+                for c in df_ch.columns
+                if any(k in c for k in ["rate", "annual", "%"])
+                and pd.api.types.is_numeric_dtype(df_ch[c])
+            ),
+            None,
+        )
+        if ycol and rcol:
+            df_ch = df_ch[[ycol, rcol]].rename(
+                columns={ycol: "year", rcol: "annual_rate"}
+            )
+            # normalize percentage if likely
+            if df_ch["annual_rate"].abs().max() > 1.0:
+                df_ch["annual_rate"] = df_ch["annual_rate"].astype(float) / 100.0
+            rate_from_changes = df_ch
+
+    # Merge or compute rates
+    out = df_tot.copy()
+    if rate_from_changes is not None:
+        out = out.merge(rate_from_changes, on="year", how="left")
+    if "annual_rate" not in out.columns or out["annual_rate"].isna().all():
+        # compute from consecutive totals
+        out = out.sort_values("year").copy()
+        out["annual_rate"] = out["total_population"].pct_change()
+
+    # Clean
+    out["annual_rate"] = (
+        out["annual_rate"]
+        .fillna(method="ffill")
+        .fillna(method="bfill")
+        .fillna(0.02)
+        .clip(-0.1, 0.2)
+    )
+
+    out_path = config.PROCESSED_DIR / "census_trend.csv"
+    out.to_csv(out_path, index=False)
+    return out_path
+
+
 def preprocess_worldpop() -> Path:
     config.ensure_dirs()
     src = config.RAW_DIR / "worldpop_summary.csv"
@@ -149,6 +236,12 @@ def main() -> None:
     en = preprocess_energy()
     tf = preprocess_traffic()
     env = preprocess_environment()
+    # Census is optional based on provided raw files
+    cen = None
+    try:
+        cen = preprocess_census()
+    except Exception:
+        cen = None
     aq = None
     # Only preprocess air quality if a raw input exists
     if (config.RAW_DIR / "air_quality_raw.csv").exists() or (
@@ -160,6 +253,8 @@ def main() -> None:
     print(f"Saved: {en}")
     print(f"Saved: {tf}")
     print(f"Saved: {env}")
+    if cen:
+        print(f"Saved: {cen}")
     if aq:
         print(f"Saved: {aq}")
     print(f"Saved: {se}")

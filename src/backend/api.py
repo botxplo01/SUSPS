@@ -6,9 +6,15 @@ from starlette.responses import RedirectResponse
 from pydantic import BaseModel
 import os
 
-from src.models.growth import predict_growth
-from src.models.energy import daily_profile as energy_profile
-from src.models.traffic import daily_profile as traffic_profile
+from src.models.growth import predict_growth, predict_from_processed, growth_from_census
+from src.models.energy import (
+    daily_profile as energy_profile,
+    daily_profile_from_processed as energy_profile_from_processed,
+)
+from src.models.traffic import (
+    daily_profile as traffic_profile,
+    daily_profile_from_processed as traffic_profile_from_processed,
+)
 from src.webapp.app import create_dash_app
 
 app = FastAPI(title="SUSPS Backend", version="0.1.0")
@@ -52,18 +58,43 @@ def set_config(payload: ConfigPayload):
 
 @app.get("/growth")
 def demo_growth():
+    # Prefer census-based forecast, then processed-scaled, then synthetic
+    try:
+        items = growth_from_census()
+        if items:
+            return {"items": items}
+    except Exception:
+        pass
+    try:
+        items = predict_from_processed()
+        if items:
+            return {"items": items}
+    except Exception:
+        pass
     items = predict_growth()
     return {"items": items}
 
 
 @app.get("/energy")
 def demo_energy():
+    try:
+        items = energy_profile_from_processed()
+        if items:
+            return {"items": items}
+    except Exception:
+        pass
     items = energy_profile()
     return {"items": items}
 
 
 @app.get("/traffic")
 def demo_traffic():
+    try:
+        items = traffic_profile_from_processed()
+        if items:
+            return {"items": items}
+    except Exception:
+        pass
     items = traffic_profile()
     return {"items": items}
 

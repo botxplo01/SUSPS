@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import List, Dict
 from pathlib import Path
+import pandas as pd
 
 from src.pipeline import config as _cfg
 
@@ -21,6 +22,46 @@ def predict_growth(
         pop = int(start_population * ((1.0 + annual_rate) ** i))
         items.append({"year": year, "predicted_population": pop})
     return items
+
+
+def growth_from_census(
+    horizon_years: int = 6,
+    processed_dir: Path | None = None,
+) -> List[Dict[str, int]]:
+    """Forecast city population using processed census_trend.csv if present.
+
+    Uses last known total_population as the base and the mean of the last
+    few annual_rate observations. Falls back to predict_from_processed/predict_growth.
+    """
+    try:
+        pdir = processed_dir or _cfg.PROCESSED_DIR
+        f = pdir / "census_trend.csv"
+        if not f.exists():
+            raise FileNotFoundError
+        df = pd.read_csv(f)
+        if "year" not in df.columns or "total_population" not in df.columns:
+            raise ValueError("census_trend missing required columns")
+        df = df.sort_values("year")
+        base_year = int(df["year"].iloc[-1])
+        base_pop = float(df["total_population"].iloc[-1])
+        rate_series = df.get("annual_rate")
+        if rate_series is None or rate_series.isna().all():
+            # compute from totals
+            rate_series = df["total_population"].pct_change()
+        # use mean of last 3 valid rates
+        recent = rate_series.dropna().tail(3)
+        r = float(recent.mean()) if len(recent) else 0.03
+        # Cap to realistic bounds
+        r = max(min(r, 0.08), -0.02)
+        items: List[Dict[str, int]] = []
+        pop = base_pop
+        for i in range(1, horizon_years + 1):
+            year = base_year + i
+            pop = pop * (1.0 + r)
+            items.append({"year": year, "predicted_population": int(pop)})
+        return items
+    except Exception:
+        return predict_from_processed(processed_dir=processed_dir)
 
 
 def predict_from_processed(

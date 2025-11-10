@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import List, Dict
 from pathlib import Path
+import pandas as pd
 
 from src.pipeline import config as _cfg
 
@@ -31,8 +32,6 @@ def daily_profile_from_processed(
         f = pdir / "traffic_features.csv"
         if not f.exists():
             return []
-        import pandas as pd
-
         df = pd.read_csv(f)
         g = df.groupby("hour")["veh_per_hour"].mean().reset_index()
         return [

@@ -13,6 +13,8 @@ venv/
 /data/processed/*
 !/data/processed/.gitkeep
 data_integration_guide.md
+data_sources.md
+data_sources_tree.md
 
 # Build / Dist
 /dist/*
