@@ -61,7 +61,9 @@ ENERGY_PATH: Optional[Path] = _env_path("ENERGY_PATH") or ENERGY_DIR
 
 # Smart City & Urban Growth (directory with multiple files)
 GRID3_SETTLEMENTS_PATH: Optional[Path] = _env_path("GRID3_SETTLEMENTS_PATH")
-SETTLEMENTS_PATH: Optional[Path] = _env_path("SETTLEMENTS_PATH") or GRID3_SETTLEMENTS_PATH
+SETTLEMENTS_PATH: Optional[Path] = (
+    _env_path("SETTLEMENTS_PATH") or GRID3_SETTLEMENTS_PATH
+)
 
 
 # API keys and providers
@@ -70,3 +72,5 @@ OPENWEATHER_API_KEY: Optional[str] = os.getenv("OPENWEATHER_API_KEY")
 TOMTOM_API_KEY: Optional[str] = os.getenv("TOMTOM_API_KEY")
 # Weather provider preference: 'openweather' (default) or 'open-meteo'
 WEATHER_PROVIDER: str = os.getenv("WEATHER_PROVIDER", "openweather")
+# Traffic provider preference: 'tomtom' (default) or 'synthetic'
+TRAFFIC_PROVIDER: str = os.getenv("TRAFFIC_PROVIDER", "tomtom")
