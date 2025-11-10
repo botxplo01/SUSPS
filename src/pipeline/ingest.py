@@ -5,7 +5,7 @@ import time
 import os
 import pandas as pd
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from . import config
 
@@ -48,7 +48,62 @@ def fetch_worldpop(
 
 
 def fetch_energy_demand(region: str = config.Defaults.region) -> pd.DataFrame:
-    """Placeholder synthetic energy demand by sector."""
+    """Energy demand by sector from raw directory if available.
+
+    If ENERGY_PATH/ENERGY_DIR points to a directory with a
+    'Final_Consumption' CSV, parse it and convert to MWh. Otherwise
+    return a small synthetic dataset to keep pipeline runnable.
+    """
+    try:
+        energy_dir = getattr(config, "ENERGY_PATH", None)
+        if energy_dir and Path(energy_dir).exists() and Path(energy_dir).is_dir():
+            # find a likely final consumption file
+            candidates: list[Path] = []
+            for p in Path(energy_dir).glob("*.csv"):
+                name = p.name.lower()
+                if "final_consumption" in name or "final consumption" in name:
+                    candidates.append(p)
+            src = candidates[0] if candidates else None
+            if src is not None:
+                df = pd.read_csv(src)
+                # normalize columns
+                df.columns = [str(c).strip().lower() for c in df.columns]
+                # case 1: long-form with sector + gwh/value
+                if "sector" in df.columns:
+                    num_cols = [
+                        c
+                        for c in df.columns
+                        if c not in {"sector", "year"}
+                        and pd.api.types.is_numeric_dtype(df[c])
+                    ]
+                    if "gwh" in df.columns:
+                        out = df[["sector", "gwh"]].copy()
+                        out.rename(columns={"gwh": "demand_mwh"}, inplace=True)
+                        out["demand_mwh"] = out["demand_mwh"].astype(float) * 1000.0
+                        return out
+                    elif "value" in df.columns:
+                        out = df[["sector", "value"]].copy()
+                        out.rename(columns={"value": "demand_mwh"}, inplace=True)
+                        out["demand_mwh"] = out["demand_mwh"].astype(float) * 1000.0
+                        return out
+                    elif num_cols:
+                        out = df[["sector"]].copy()
+                        out["demand_mwh"] = (
+                            df[num_cols].sum(axis=1).astype(float) * 1000.0
+                        )
+                        return out
+                # case 2: wide-form with sector columns: sum numeric columns and melt
+                numeric_cols = [
+                    c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])
+                ]
+                if numeric_cols and len(numeric_cols) > 1:
+                    melted = df[numeric_cols].sum().reset_index()
+                    melted.columns = ["sector", "gwh"]
+                    melted["demand_mwh"] = melted["gwh"].astype(float) * 1000.0
+                    return melted[["sector", "demand_mwh"]]
+        # fallback synthetic
+    except Exception:
+        pass
     data = {
         "sector": ["household", "commercial", "industrial"],
         "demand_mwh": [250.0, 180.0, 520.0],
@@ -226,6 +281,69 @@ def fetch_traffic() -> pd.DataFrame:
         return fallback
 
 
+# --- Air quality (OpenAQ if key; fallback to existing CSV) ---
+
+
+def fetch_air_quality() -> pd.DataFrame:
+    """Fetch recent AQ measurements from OpenAQ for Nairobi (pm25, pm10, o3).
+
+    Returns a raw records DataFrame with columns: datetime, parameter, value, unit.
+    """
+    try:
+        api_key = getattr(config, "OPEN_AQ_API_KEY", None)
+        if not api_key:
+            raise RuntimeError("OPEN_AQ_API_KEY not set")
+        # Query last 30 days in Nairobi; OpenAQ v2
+        date_from = (datetime.utcnow() - timedelta(days=30)).isoformat(
+            timespec="seconds"
+        ) + "Z"
+        params = {
+            "city": "Nairobi",
+            "country": "KE",
+            "parameter": "pm25,pm10,o3",
+            "date_from": date_from,
+            "limit": 10000,
+            "order_by": "date",
+            "sort": "desc",
+        }
+        headers = {"X-API-Key": api_key}
+        r = requests.get(
+            "https://api.openaq.org/v2/measurements",
+            params=params,
+            headers=headers,
+            timeout=20,
+        )
+        r.raise_for_status()
+        js = r.json()
+        results = js.get("results", [])
+        rows: list[dict] = []
+        for it in results:
+            dt = it.get("date", {}).get("utc") or it.get("date", {}).get("local")
+            param = it.get("parameter")
+            value = it.get("value")
+            unit = it.get("unit")
+            if dt and param is not None and value is not None:
+                rows.append(
+                    {
+                        "datetime": dt,
+                        "parameter": param,
+                        "value": float(value),
+                        "unit": unit,
+                    }
+                )
+        return pd.DataFrame(rows)
+    except Exception:
+        # Fallback to existing raw CSV if present
+        try:
+            p = config.RAW_DIR / "Air_Quality_Data_2025.csv"
+            if p.exists():
+                df = pd.read_csv(p)
+                return df
+        except Exception:
+            pass
+        return pd.DataFrame([])
+
+
 # --- Socioeconomic (synthetic) ---
 
 
@@ -258,18 +376,22 @@ def main() -> None:
     ed = fetch_energy_demand()
     tf = fetch_traffic()
     env = fetch_environment()
+    aq = fetch_air_quality()
     se = fetch_socioeconomic()
 
     wp_path = save_raw(wp, "worldpop_summary")
     ed_path = save_raw(ed, "energy_demand")
     tf_path = save_raw(tf, "traffic_flows")
     env_path = save_raw(env, "environment_monthly")
+    aq_path = save_raw(aq, "air_quality_raw") if not aq.empty else None
     se_path = save_raw(se, "socioeconomic")
 
     print(f"Saved: {wp_path}")
     print(f"Saved: {ed_path}")
     print(f"Saved: {tf_path}")
     print(f"Saved: {env_path}")
+    if aq_path:
+        print(f"Saved: {aq_path}")
     print(f"Saved: {se_path}")
 
 
