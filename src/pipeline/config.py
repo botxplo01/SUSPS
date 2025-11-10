@@ -52,9 +52,8 @@ CENSUS_PATH: Optional[Path] = CENSUS_TOTAL_PATH or _env_path("CENSUS_PATH")
 MATATUS_PATH: Optional[Path] = _env_path("MATATUS_PATH")
 OSM_PATH: Optional[Path] = _env_path("OSM_PATH")
 
-# Environmental & Climate (Copernicus/Land cover)
+# Environmental & Climate (Land cover)
 LANDCOVER_PATH_2015: Optional[Path] = _env_path("LANDCOVER_PATH_2015")
-COPERNICUS_PATH: Optional[Path] = _env_path("COPERNICUS_PATH") or LANDCOVER_PATH_2015
 
 # Energy & Infrastructure (directory with multiple files)
 ENERGY_DIR: Optional[Path] = _env_path("ENERGY")
@@ -64,13 +63,10 @@ ENERGY_PATH: Optional[Path] = _env_path("ENERGY_PATH") or ENERGY_DIR
 GRID3_SETTLEMENTS_PATH: Optional[Path] = _env_path("GRID3_SETTLEMENTS_PATH")
 SETTLEMENTS_PATH: Optional[Path] = _env_path("SETTLEMENTS_PATH") or GRID3_SETTLEMENTS_PATH
 
-# Optional datasets
-NIGHTLIGHTS_PATH: Optional[Path] = _env_path("NIGHTLIGHTS_PATH")
-GHSL_PATH: Optional[Path] = _env_path("GHSL_PATH")
 
-
-# API keys (do not hardcode secrets) — prefer .env names
-GOOGLE_MAPS_API_KEY: Optional[str] = os.getenv("GOOGLE_MAPS_API_KEY")
+# API keys and providers
 OPEN_AQ_API_KEY: Optional[str] = os.getenv("OPEN_AQ_API_KEY")
 OPENWEATHER_API_KEY: Optional[str] = os.getenv("OPENWEATHER_API_KEY")
 TOMTOM_API_KEY: Optional[str] = os.getenv("TOMTOM_API_KEY")
+# Weather provider preference: 'openweather' (default) or 'open-meteo'
+WEATHER_PROVIDER: str = os.getenv("WEATHER_PROVIDER", "openweather")
