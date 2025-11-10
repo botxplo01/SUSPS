@@ -2,11 +2,13 @@
 
 This document summarizes the current state of the SUSPS repository: what’s done, what’s next, and the desired end-state for the system.
 
-## Current status (2025-11-08)
-- Lint/format/typecheck/tests: all green locally (Ruff, Black, Mypy). Pytest: 4 passed, 4 skipped, 1 warning (Starlette suggests installing `python-multipart`; harmless unless form parsing is used).
-- Dash mounting migrated to `a2wsgi.WSGIMiddleware` (Starlette WSGI deprecation removed).
-- `pytest.ini` added to set `pythonpath = .` and default asyncio loop scope to function.
-- WARP.md updated with these changes and commands.
+## Current status (2025-11-10)
+- Lint/format/typecheck/tests: green locally (Ruff, Black, Mypy). Pytest: 4 passed, 4 skipped; warnings noted (multipart suggestion, datetime.utcnow deprecation).
+- Frontend: Sidebar fixed, dark theme, flush-left with full-width active highlight; extra top spacing; placeholders for maps/tables show on all pages; resolved Dash `Div.__init__` children error.
+- Pipeline: API-first ingestion writes to `data/raw/` (OpenWeather default, Open‑Meteo optional; OpenAQ; TomTom). Preprocess writes to `data/processed/` (environment_features, energy_features, traffic_features, air_quality_daily). Census and precomputed growth forecast (`growth_forecast_city.csv`) added. Urban_Growth integrated with catalog and features.
+- API: `/growth` now prefers precomputed forecast, then census-based/processed, then synthetic. Added `/energy/summary` and `/traffic/summary`. Energy/traffic endpoints prefer processed data.
+- Config: Env alignment with `.env`; removed unused `COPERNICUS_PATH`, `NIGHTLIGHTS_PATH`, `GHSL_PATH`, `GOOGLE_MAPS_API_KEY`. Added `WEATHER_PROVIDER` (default `openweather`), `TRAFFIC_PROVIDER` (default `tomtom`), and `CITY_LAT/LON` defaults for Nairobi.
+- Docs: WARP.md and README reflect commands; this status doc updated.
 
 ## 1) What’s implemented
 
@@ -93,12 +95,23 @@ Milestone M1 — Clean baseline (DONE)
 - `pytest.ini` in place; WARP.md/README updated.
 
 Milestone M2 — Demo/API feature completeness (no-DB path)
-- Endpoints: add `/energy/sector-summary` and `/traffic/hourly` backed by `src/models.energy.summary_from_processed` and `src.models.traffic.daily_profile_from_processed` with graceful fallback to synthetic when artifacts absent.
-- UI: add charts for sector energy and hourly traffic; ensure the Data Source toggle (Demo | API) updates all charts.
-- Tests: unit tests for the model readers against temporary processed artifacts; API route tests for new endpoints.
-- Docs: update WARP.md/README with new endpoints and toggle behavior.
+- Backend (DONE): `/growth` prefers precomputed forecast; `/energy/summary` and `/traffic/summary` implemented; processed-first behavior across endpoints with graceful fallbacks.
+- Pipeline (DONE): API-first ingest (OpenWeather/OpenAQ/TomTom) with fallbacks; preprocess produces environment/energy/traffic/AQ features; census + growth forecast precompute.
+- UI (PENDING): add charts for Energy sector summary and hourly Traffic profile; ensure Data Source toggle updates all charts consistently.
+- Tests (PENDING): add API route tests for new endpoints; add unit tests for growth forecast generator.
+- Docs (PENDING): ensure README/WARP.md examples include new endpoints and provider env guidance.
 
-Milestone M3 — DB-backed experience and E2E (optional but recommended)
+Milestone M3 — Ward-level and spatial features (Nairobi)
+- Add Nairobi ward boundaries; compute zonal stats for WorldPop/land cover → ward-level features.
+- Allocate growth forecasts to wards using pop_share; prepare ward choropleth map for UI.
+- Derive OSM network metrics (road_km by class, intersection density) to enrich traffic.
+
+Milestone M4 — Reliability and ops
+- Add caching and backoff for external API calls; scheduled ingestion (hourly/daily) for weather/AQ/traffic.
+- Add basic metrics/logging; keep `/health` stable; document operational playbook.
+- Expand fairness checks where applicable (coverage across wards).
+
+Milestone M5 — DB-backed experience and E2E (optional)
 - Ensure `docker compose up --build` + seed scripts produce data; DB-backed `/energy/summary` and `/traffic/summary` reflect seeded content.
 - UI (DB dashboard under `backend/`): verify charts render and document usage.
 - CI (optional separate job): service container Postgres, run migrations/seed, then run DB summary tests.

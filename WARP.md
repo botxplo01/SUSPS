@@ -89,7 +89,7 @@ SUSPS is organized around a lightweight FastAPI app that mounts a Dash UI, plus 
 Key URLs
 - Health: `/health`
 - Dashboard: `/dash/`
-- Non-DB demo API (Render path): `/growth`, `/energy`, `/traffic`, `/config` (GET/POST)
+- Non-DB demo API (Render path): `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary`, `/config` (GET/POST)
 - DB-backed API (Docker): `/areas`, `/energy`, `/traffic`, summaries at `/energy/summary`, `/traffic/summary`
 
 UI notes (Render):
@@ -102,3 +102,26 @@ Examples (non-DB demo responses, truncated):
   {"items": [{"hour": 0, "demand_mwh": 5.0}, {"hour": 8, "demand_mwh": 8.0}]}
 - `/traffic`
   {"items": [{"hour": 7, "volume": 850}, {"hour": 18, "volume": 900}]}
+
+## Data sources and environment
+
+- Primary APIs and keys
+  - OPENWEATHER_API_KEY (default weather provider)
+  - OPEN_AQ_API_KEY (OpenAQ air quality)
+  - TOMTOM_API_KEY (traffic flow sampling)
+- Provider toggles
+  - WEATHER_PROVIDER: `openweather` (default) or `open-meteo`
+  - TRAFFIC_PROVIDER: `tomtom` (default) or `synthetic`
+- Location
+  - CITY_LAT / CITY_LON (defaults to Nairobi CBD)
+- Raw and processed
+  - Ingest writes to `data/raw/`; preprocess writes to `data/processed/`.
+  - Growth forecast is precomputed to `data/processed/growth_forecast_city.csv` when census data is available.
+
+## Latest changes (2025-11-10)
+
+- UI: Fixed, dark sidebar flush-left with full-width active highlight; resolved Dash `Div` children error; placeholders render.
+- Pipeline: API-first ingestion for weather (OpenWeather), air quality (OpenAQ), traffic (TomTom) with fallbacks to local raw files and then synthetic.
+- Urban Growth: Added catalog and features outputs from `data/raw/Urban_Growth`.
+- Models/API: Endpoints now prefer processed outputs; added `/energy/summary` and `/traffic/summary`; `/growth` prefers precomputed forecast.
+- Config: Removed unused COPERNICUS_PATH, NIGHTLIGHTS_PATH, GHSL_PATH, GOOGLE_MAPS_API_KEY; added WEATHER_PROVIDER and TRAFFIC_PROVIDER.
