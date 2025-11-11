@@ -5,7 +5,10 @@ import os
 import requests
 
 from src.models.growth import predict_growth as _predict_growth
-from src.models.energy import daily_profile as _energy_profile
+from src.models.energy import (
+    daily_profile as _energy_profile,
+    summary_from_processed as _energy_summary_from_processed,
+)
 from src.models.traffic import daily_profile as _traffic_profile
 
 
@@ -223,6 +226,9 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                 html.P("Daily energy demand profile (MWh)."),
                 dcc.Graph(id="energy-graph", figure=fig_energy),
                 html.Hr(),
+                html.P("Sector summary (from processed/API)."),
+                dcc.Graph(id="energy-summary-graph"),
+                html.Hr(),
                 dbc.Row(
                     [
                         dbc.Col(_placeholder_map("energy-map", "Energy map"), md=6),
@@ -238,6 +244,9 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                 html.H3("Traffic"),
                 html.P("Hourly traffic volume profile."),
                 dcc.Graph(id="traffic-graph", figure=fig_traffic),
+                html.Hr(),
+                html.P("Average hourly volume (from processed/API)."),
+                dcc.Graph(id="traffic-summary-graph"),
                 html.Hr(),
                 dbc.Row(
                     [
@@ -300,6 +309,8 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
         Output("growth-graph", "figure"),
         Output("energy-graph", "figure"),
         Output("traffic-graph", "figure"),
+        Output("energy-summary-graph", "figure"),
+        Output("traffic-summary-graph", "figure"),
         Input("data-source", "value"),
         State("url", "pathname"),
     )
@@ -338,12 +349,46 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                 layout=go.Layout(title_text="Demo: Traffic (daily profile)"),
             )
 
+        def _fig_energy_summary(items):
+            sectors = [str(it.get("sector", "")) for it in items]
+            values = [float(it.get("demand_mwh", it.get("pct", 0))) for it in items]
+            return go.Figure(
+                data=[go.Bar(x=sectors, y=values, name="sector demand")],
+                layout=go.Layout(title_text="Energy sector summary"),
+            )
+
+        def _fig_traffic_hourly(items):
+            hours = [int(it.get("hour", it.get("hourly", 0))) for it in items]
+            vals = [
+                float(it.get("avg_veh_per_hour", it.get("volume", 0))) for it in items
+            ]
+            return go.Figure(
+                data=[go.Bar(x=hours, y=vals, name="avg veh/h")],
+                layout=go.Layout(title_text="Traffic average hourly volume"),
+            )
+
         if source == "api":
             try:
-                g = requests.get(f"{base}/growth", timeout=5).json().get("items", [])
-                e = requests.get(f"{base}/energy", timeout=5).json().get("items", [])
-                t = requests.get(f"{base}/traffic", timeout=5).json().get("items", [])
-                return _fig_growth(g), _fig_energy(e), _fig_traffic(t)
+                g = requests.get(f"{base}/growth", timeout=8).json().get("items", [])
+                e = requests.get(f"{base}/energy", timeout=8).json().get("items", [])
+                t = requests.get(f"{base}/traffic", timeout=8).json().get("items", [])
+                es = (
+                    requests.get(f"{base}/energy/summary", timeout=8)
+                    .json()
+                    .get("items", [])
+                )
+                ts = (
+                    requests.get(f"{base}/traffic/summary", timeout=8)
+                    .json()
+                    .get("items", [])
+                )
+                return (
+                    _fig_growth(g),
+                    _fig_energy(e),
+                    _fig_traffic(t),
+                    _fig_energy_summary(es),
+                    _fig_traffic_hourly(ts),
+                )
             except Exception:
                 pass  # fall back to demo
 
@@ -351,6 +396,20 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
         g = _predict_growth()
         e = _energy_profile()
         t = _traffic_profile()
-        return _fig_growth(g), _fig_energy(e), _fig_traffic(t)
+        es = _energy_summary_from_processed()
+        if not es:
+            es = [
+                {"sector": "household", "demand_mwh": 250_000, "pct": 0.5},
+                {"sector": "commercial", "demand_mwh": 180_000, "pct": 0.3},
+                {"sector": "industrial", "demand_mwh": 520_000, "pct": 0.2},
+            ]
+        ts = [{"hour": it["hour"], "avg_veh_per_hour": it["volume"]} for it in t]
+        return (
+            _fig_growth(g),
+            _fig_energy(e),
+            _fig_traffic(t),
+            _fig_energy_summary(es),
+            _fig_traffic_hourly(ts),
+        )
 
     return app

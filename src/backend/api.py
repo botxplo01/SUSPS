@@ -5,6 +5,7 @@ from starlette.responses import JSONResponse
 from starlette.responses import RedirectResponse
 from pydantic import BaseModel
 import os
+from typing import Optional
 
 from src.models.growth import (
     predict_growth,
@@ -61,6 +62,37 @@ def set_config(payload: ConfigPayload):
     return {"data_source": _DEFAULT_SOURCE}
 
 
+# --- Optional database wiring (enabled via env) ---
+
+def _truthy(val: Optional[str]) -> bool:
+    return str(val).lower() in {"1", "true", "yes", "on"}
+
+
+def _normalize_db_url(url: str) -> str:
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+psycopg2://", 1)
+    if url.startswith("postgresql://") and "+psycopg2://" not in url:
+        return url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    return url
+
+_DB_ENABLED = False
+try:
+    _want_db = _truthy(os.getenv("USE_DB")) or _truthy(os.getenv("USE_LOCAL_DB")) or bool(os.getenv("DATABASE_URL"))
+    _raw_url = os.getenv("DATABASE_URL", "")
+    if _want_db and _raw_url:
+        _db_url = _normalize_db_url(_raw_url)
+        # ensure backend.app.core.db sees the normalized URL
+        os.environ["DATABASE_URL"] = _db_url
+        from backend.app.core.db import SessionLocal  # type: ignore
+        from backend.app.models.tables import UrbanArea, EnergyConsumption, TrafficFlow  # type: ignore
+        from sqlalchemy import text  # type: ignore
+
+        _DB_ENABLED = True
+except Exception:
+    # If imports fail (libs missing, etc.), stay in no-DB mode
+    _DB_ENABLED = False
+
+
 @app.get("/growth")
 def demo_growth():
     # Prefer precomputed forecast, then census-based, then processed-scaled, then synthetic
@@ -88,6 +120,34 @@ def demo_growth():
 
 @app.get("/energy")
 def demo_energy():
+    # DB-first when enabled
+    if _DB_ENABLED:
+        try:
+            with SessionLocal() as db:  # type: ignore[name-defined]
+                rows = (
+                    db.query(
+                        EnergyConsumption.area_id,
+                        EnergyConsumption.ts,
+                        EnergyConsumption.predicted_demand,
+                        EnergyConsumption.actual_demand,
+                    )
+                    .order_by(EnergyConsumption.ts.desc())
+                    .limit(50)
+                    .all()
+                )
+                items = [
+                    {
+                        "area_id": r[0],
+                        "ts": r[1].isoformat() if r[1] else None,
+                        "predicted": r[2],
+                        "actual": r[3],
+                    }
+                    for r in rows
+                ]
+                return {"items": items}
+        except Exception:
+            pass  # fall back below
+    # processed/demo fallback
     try:
         items = energy_profile_from_processed()
         if items:
@@ -100,6 +160,35 @@ def demo_energy():
 
 @app.get("/traffic")
 def demo_traffic():
+    if _DB_ENABLED:
+        try:
+            with SessionLocal() as db:  # type: ignore[name-defined]
+                rows = (
+                    db.query(
+                        TrafficFlow.area_id,
+                        TrafficFlow.ts,
+                        TrafficFlow.predicted_volume,
+                        TrafficFlow.actual_volume,
+                        TrafficFlow.congestion_level,
+                    )
+                    .order_by(TrafficFlow.ts.desc())
+                    .limit(50)
+                    .all()
+                )
+                items = [
+                    {
+                        "area_id": r[0],
+                        "ts": r[1].isoformat() if r[1] else None,
+                        "predicted_volume": r[2],
+                        "actual_volume": r[3],
+                        "congestion": r[4],
+                    }
+                    for r in rows
+                ]
+                return {"items": items}
+        except Exception:
+            pass
+    # processed/demo fallback
     try:
         items = traffic_profile_from_processed()
         if items:
@@ -125,6 +214,35 @@ app.mount("/dash", WSGIMiddleware(_dash_app.server))  # type: ignore[arg-type]
 # Optional summaries
 @app.get("/energy/summary")
 def energy_summary():
+    # DB-first when enabled
+    if _DB_ENABLED:
+        try:
+            with SessionLocal() as db:  # type: ignore[name-defined]
+                rows = (
+                    db.query(
+                        UrbanArea.area_id,
+                        UrbanArea.name,
+                        text("AVG(energy_consumption.predicted_demand) as predicted"),
+                        text("AVG(energy_consumption.actual_demand) as actual"),
+                    )
+                    .join(EnergyConsumption, EnergyConsumption.area_id == UrbanArea.area_id)
+                    .group_by(UrbanArea.area_id, UrbanArea.name)
+                    .order_by(UrbanArea.area_id)
+                    .all()
+                )
+                items = [
+                    {
+                        "area_id": r[0],
+                        "area_name": r[1],
+                        "predicted": float(r[2]) if r[2] is not None else None,
+                        "actual": float(r[3]) if r[3] is not None else None,
+                    }
+                    for r in rows
+                ]
+                return {"items": items}
+        except Exception:
+            pass
+    # processed/demo fallback
     try:
         import pandas as pd
         from src.pipeline import config as _cfg
@@ -149,6 +267,33 @@ def energy_summary():
 
 @app.get("/traffic/summary")
 def traffic_summary():
+    if _DB_ENABLED:
+        try:
+            with SessionLocal() as db:  # type: ignore[name-defined]
+                rows = (
+                    db.query(
+                        UrbanArea.area_id,
+                        UrbanArea.name,
+                        text("AVG(traffic_flow.predicted_volume) as predicted"),
+                        text("AVG(traffic_flow.actual_volume) as actual"),
+                    )
+                    .join(TrafficFlow, TrafficFlow.area_id == UrbanArea.area_id)
+                    .group_by(UrbanArea.area_id, UrbanArea.name)
+                    .order_by(UrbanArea.area_id)
+                    .all()
+                )
+                items = [
+                    {
+                        "area_id": r[0],
+                        "area_name": r[1],
+                        "predicted_volume": int(r[2]) if r[2] is not None else None,
+                        "actual_volume": int(r[3]) if r[3] is not None else None,
+                    }
+                    for r in rows
+                ]
+                return {"items": items}
+        except Exception:
+            pass
     try:
         import pandas as pd
         from src.pipeline import config as _cfg
@@ -169,3 +314,21 @@ def traffic_summary():
         return {"items": items}
     except Exception:
         return {"items": []}
+
+
+# Optional: expose areas when DB is enabled
+@app.get("/areas")
+def list_areas():
+    if not _DB_ENABLED:
+        return {"items": []}
+    try:
+        with SessionLocal() as db:  # type: ignore[name-defined]
+            rows = (
+                db.query(UrbanArea.area_id, UrbanArea.name)
+                .order_by(UrbanArea.area_id)
+                .limit(100)
+                .all()
+            )
+            return {"items": [{"area_id": r[0], "name": r[1]} for r in rows]}
+    except Exception as e:
+        return {"items": [], "detail": str(e)}
