@@ -128,14 +128,14 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
             [
                 html.H2("SUSPS", className="display-6 mb-3"),
                 html.Hr(),
-                html.P("Data source for demo charts", className="text-secondary small"),
+                html.P("Data source", className="text-secondary small"),
                 dcc.RadioItems(
                     id="data-source",
                     options=[
-                        {"label": "Demo (local)", "value": "demo"},
-                        {"label": "API", "value": "api"},
+                        {"label": "API (processed/DB)", "value": "api"},
+                        {"label": "Demo (fallback)", "value": "demo"},
                     ],
-                    value=os.getenv("DEFAULT_DATA_SOURCE", "demo"),
+                    value=os.getenv("DEFAULT_DATA_SOURCE", "api"),
                     style={"marginBottom": "0.5rem"},
                 ),
                 html.Hr(),
@@ -189,17 +189,14 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                     ]
                 ),
                 dbc.Row(
-                    [dbc.Col(dcc.Graph(id="traffic-graph", figure=fig_traffic), md=12)]
-                ),
-                html.Hr(),
-                dbc.Row(
                     [
-                        dbc.Col(
-                            _placeholder_map("dashboard-map", "Map placeholder"), md=6
-                        ),
-                        dbc.Col(_placeholder_table("Table placeholder"), md=6),
+                        dbc.Col(dcc.Graph(id="traffic-graph", figure=fig_traffic), md=6),
+                        dbc.Col(dcc.Graph(id="energy-summary-graph"), md=6),
                     ]
                 ),
+                dbc.Row([
+                    dbc.Col(dcc.Graph(id="traffic-summary-graph"), md=12),
+                ]),
             ]
         )
 
@@ -209,13 +206,6 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                 html.H3("Growth"),
                 html.P("Projected population by year."),
                 dcc.Graph(id="growth-graph", figure=fig_growth),
-                html.Hr(),
-                dbc.Row(
-                    [
-                        dbc.Col(_placeholder_map("growth-map", "Growth map"), md=6),
-                        dbc.Col(_placeholder_table("Growth table"), md=6),
-                    ]
-                ),
             ]
         )
 
@@ -223,18 +213,11 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
         return html.Div(
             [
                 html.H3("Energy"),
-                html.P("Daily energy demand profile (MWh)."),
+                html.P("Daily energy demand (predicted vs actual when available)."),
                 dcc.Graph(id="energy-graph", figure=fig_energy),
                 html.Hr(),
-                html.P("Sector summary (from processed/API)."),
+                html.P("Energy summary"),
                 dcc.Graph(id="energy-summary-graph"),
-                html.Hr(),
-                dbc.Row(
-                    [
-                        dbc.Col(_placeholder_map("energy-map", "Energy map"), md=6),
-                        dbc.Col(_placeholder_table("Energy table"), md=6),
-                    ]
-                ),
             ]
         )
 
@@ -242,18 +225,11 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
         return html.Div(
             [
                 html.H3("Traffic"),
-                html.P("Hourly traffic volume profile."),
+                html.P("Hourly traffic volume (predicted vs actual when available)."),
                 dcc.Graph(id="traffic-graph", figure=fig_traffic),
                 html.Hr(),
-                html.P("Average hourly volume (from processed/API)."),
+                html.P("Traffic hourly summary"),
                 dcc.Graph(id="traffic-summary-graph"),
-                html.Hr(),
-                dbc.Row(
-                    [
-                        dbc.Col(_placeholder_map("traffic-map", "Traffic map"), md=6),
-                        dbc.Col(_placeholder_table("Traffic table"), md=6),
-                    ]
-                ),
             ]
         )
 
@@ -330,26 +306,55 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
             )
 
         def _fig_energy(items):
-            hours = [it["hour"] for it in items]
-            vals = [it["demand_mwh"] for it in items]
+            # DB shape: items with ts, predicted, actual
+            if items and ("predicted" in items[0] or "actual" in items[0]):
+                xs = [it.get("ts") for it in items]
+                pred = [it.get("predicted") for it in items]
+                act = [it.get("actual") for it in items]
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=xs, y=pred, mode="lines+markers", name="predicted"))
+                fig.add_trace(go.Scatter(x=xs, y=act, mode="lines+markers", name="actual"))
+                fig.update_layout(title_text="Energy: predicted vs actual")
+                return fig
+            # Processed/demo shape: hour + demand_mwh
+            hours = [it.get("hour") for it in items]
+            vals = [it.get("demand_mwh") for it in items]
             return go.Figure(
-                data=[
-                    go.Scatter(
-                        x=hours, y=vals, mode="lines+markers", name="demand (MWh)"
-                    )
-                ],
-                layout=go.Layout(title_text="Demo: Energy (daily profile)"),
+                data=[go.Scatter(x=hours, y=vals, mode="lines+markers", name="demand (MWh)")],
+                layout=go.Layout(title_text="Energy: daily profile"),
             )
 
         def _fig_traffic(items):
-            hours = [it["hour"] for it in items]
-            vals = [it["volume"] for it in items]
+            # DB shape: items with ts, predicted_volume, actual_volume
+            if items and ("predicted_volume" in items[0] or "actual_volume" in items[0]):
+                xs = [it.get("ts") for it in items]
+                pred = [it.get("predicted_volume") for it in items]
+                act = [it.get("actual_volume") for it in items]
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=xs, y=pred, mode="lines+markers", name="predicted"))
+                fig.add_trace(go.Scatter(x=xs, y=act, mode="lines+markers", name="actual"))
+                fig.update_layout(title_text="Traffic: predicted vs actual")
+                return fig
+            # Processed/demo shape: hour + volume
+            hours = [it.get("hour") for it in items]
+            vals = [it.get("volume") for it in items]
             return go.Figure(
                 data=[go.Scatter(x=hours, y=vals, mode="lines+markers", name="volume")],
-                layout=go.Layout(title_text="Demo: Traffic (daily profile)"),
+                layout=go.Layout(title_text="Traffic: daily profile"),
             )
 
         def _fig_energy_summary(items):
+            # DB shape: area_name + predicted/actual averages
+            if items and "area_name" in items[0]:
+                x = [str(it.get("area_name")) for it in items]
+                pred = [float(it.get("predicted", 0) or 0) for it in items]
+                act = [float(it.get("actual", 0) or 0) for it in items]
+                fig = go.Figure()
+                fig.add_trace(go.Bar(x=x, y=pred, name="predicted"))
+                fig.add_trace(go.Bar(x=x, y=act, name="actual"))
+                fig.update_layout(barmode="group", title_text="Energy summary by area")
+                return fig
+            # Processed shape: sector + demand_mwh
             sectors = [str(it.get("sector", "")) for it in items]
             values = [float(it.get("demand_mwh", it.get("pct", 0))) for it in items]
             return go.Figure(
@@ -358,10 +363,19 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
             )
 
         def _fig_traffic_hourly(items):
+            # DB shape: area_name + predicted/actual volume averages (not hourly) — show by area
+            if items and "area_name" in items[0] and ("predicted_volume" in items[0] or "actual_volume" in items[0]):
+                x = [str(it.get("area_name")) for it in items]
+                pred = [float(it.get("predicted_volume", 0) or 0) for it in items]
+                act = [float(it.get("actual_volume", 0) or 0) for it in items]
+                fig = go.Figure()
+                fig.add_trace(go.Bar(x=x, y=pred, name="predicted"))
+                fig.add_trace(go.Bar(x=x, y=act, name="actual"))
+                fig.update_layout(barmode="group", title_text="Traffic summary by area")
+                return fig
+            # Processed/demo shape: hourly averages
             hours = [int(it.get("hour", it.get("hourly", 0))) for it in items]
-            vals = [
-                float(it.get("avg_veh_per_hour", it.get("volume", 0))) for it in items
-            ]
+            vals = [float(it.get("avg_veh_per_hour", it.get("volume", 0))) for it in items]
             return go.Figure(
                 data=[go.Bar(x=hours, y=vals, name="avg veh/h")],
                 layout=go.Layout(title_text="Traffic average hourly volume"),
