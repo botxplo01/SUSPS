@@ -30,8 +30,14 @@ class HFTextGenerator:
             os.getenv("HUGGINGFACE_API_KEY")
             or os.getenv("HF_API_TOKEN")
             or os.getenv("HUGGINGFACEHUB_API_TOKEN")
+            or os.getenv("HF_API_KEY")  # user-provided name
         )
-        self.model = model or os.getenv("HF_MODEL") or _DEFAULT_MODELS[0]
+        self.model = (
+            model
+            or os.getenv("HF_MODEL")
+            or os.getenv("HF_MODEL_NAME")  # user-provided name
+            or _DEFAULT_MODELS[0]
+        )
         # Allow override from env
         try:
             timeout_env = float(os.getenv("HF_TIMEOUT", "0") or 0)

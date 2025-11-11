@@ -371,6 +371,7 @@ def advisory_status(probe: bool = Query(False)):
         os.getenv("HUGGINGFACE_API_KEY")
         or os.getenv("HF_API_TOKEN")
         or os.getenv("HUGGINGFACEHUB_API_TOKEN")
+        or os.getenv("HF_API_KEY")
     )
     gen = HFTextGenerator()
     info = {
