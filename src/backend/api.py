@@ -7,6 +7,14 @@ from pydantic import BaseModel
 import os
 from typing import Optional
 
+# Load .env in local dev so API picks up LOCAL_DATABASE_URL and local paths
+try:  # pragma: no cover - optional
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:
+    pass
+
 from src.models.growth import (
     predict_growth,
     predict_from_processed,
@@ -78,7 +86,13 @@ def _normalize_db_url(url: str) -> str:
 _DB_ENABLED = False
 try:
     _want_db = _truthy(os.getenv("USE_DB")) or _truthy(os.getenv("USE_LOCAL_DB")) or bool(os.getenv("DATABASE_URL"))
-    _raw_url = os.getenv("DATABASE_URL", "")
+    _raw_url = ""
+    # Prefer LOCAL_DATABASE_URL when explicitly using local DB
+    if _truthy(os.getenv("USE_LOCAL_DB")) and os.getenv("LOCAL_DATABASE_URL"):
+        _raw_url = os.getenv("LOCAL_DATABASE_URL", "")
+    elif os.getenv("DATABASE_URL"):
+        _raw_url = os.getenv("DATABASE_URL", "")
+
     if _want_db and _raw_url:
         _db_url = _normalize_db_url(_raw_url)
         # ensure backend.app.core.db sees the normalized URL
