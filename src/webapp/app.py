@@ -215,6 +215,18 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                 html.H3("Growth"),
                 html.P("Projected population by year."),
                 dcc.Graph(id="growth-graph", figure=fig_growth),
+                # Hidden graphs to satisfy callbacks on this route
+                html.Div(
+                    [
+                        dcc.Graph(id="energy-graph", style={"display": "none"}),
+                        dcc.Graph(id="traffic-graph", style={"display": "none"}),
+                        dcc.Graph(id="energy-summary-graph", style={"display": "none"}),
+                        dcc.Graph(
+                            id="traffic-summary-graph", style={"display": "none"}
+                        ),
+                    ],
+                    style={"display": "none"},
+                ),
                 html.Hr(),
                 html.H4("Insights"),
                 html.Div(
@@ -232,6 +244,17 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                 html.Hr(),
                 html.P("Energy summary"),
                 dcc.Graph(id="energy-summary-graph"),
+                # Hidden graphs to satisfy callbacks on this route
+                html.Div(
+                    [
+                        dcc.Graph(id="growth-graph", style={"display": "none"}),
+                        dcc.Graph(id="traffic-graph", style={"display": "none"}),
+                        dcc.Graph(
+                            id="traffic-summary-graph", style={"display": "none"}
+                        ),
+                    ],
+                    style={"display": "none"},
+                ),
                 html.Hr(),
                 html.H4("Insights"),
                 html.Div(
@@ -249,6 +272,15 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                 html.Hr(),
                 html.P("Traffic hourly summary"),
                 dcc.Graph(id="traffic-summary-graph"),
+                # Hidden graphs to satisfy callbacks on this route
+                html.Div(
+                    [
+                        dcc.Graph(id="growth-graph", style={"display": "none"}),
+                        dcc.Graph(id="energy-graph", style={"display": "none"}),
+                        dcc.Graph(id="energy-summary-graph", style={"display": "none"}),
+                    ],
+                    style={"display": "none"},
+                ),
                 html.Hr(),
                 html.H4("Insights"),
                 html.Div(

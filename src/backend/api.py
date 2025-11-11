@@ -390,14 +390,10 @@ def advisory_status(probe: bool = Query(False)):
                     json={"inputs": "ping", "parameters": {"max_new_tokens": 4}},
                     model=gen.model,
                     task="text2text-generation",
-                    timeout=min(8, gen.timeout),
                 )
             else:
                 gen._client.text_generation(  # type: ignore[attr-defined]
-                    "ping",
-                    model=gen.model,
-                    max_new_tokens=4,
-                    timeout=min(8, gen.timeout),
+                    "ping", model=gen.model, max_new_tokens=4
                 )
             info["probe_ok"] = True
         except Exception as e:  # pragma: no cover

@@ -80,7 +80,6 @@ class HFTextGenerator:
                             },
                             model=m,
                             task="text2text-generation",
-                            timeout=self.timeout,
                         )
                         # Possible shapes: list[{'generated_text': str}] or dict
                         if (
@@ -107,7 +106,6 @@ class HFTextGenerator:
                             temperature=temperature,
                             top_p=0.9,
                             repetition_penalty=1.05,
-                            timeout=self.timeout,
                         )
                         return out if isinstance(out, str) else str(out)
                 except Exception:
