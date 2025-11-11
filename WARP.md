@@ -125,3 +125,71 @@ Examples (non-DB demo responses, truncated):
 - Urban Growth: Added catalog and features outputs from `data/raw/Urban_Growth`.
 - Models/API: Endpoints now prefer processed outputs; added `/energy/summary` and `/traffic/summary`; `/growth` prefers precomputed forecast.
 - Config: Removed unused COPERNICUS_PATH, NIGHTLIGHTS_PATH, GHSL_PATH, GOOGLE_MAPS_API_KEY; added WEATHER_PROVIDER and TRAFFIC_PROVIDER.
+
+---
+
+## Environment parity: Local vs Render (processed → DB, identical data)
+
+Overview
+- Unified API: `src/backend/api.py` loads `.env` locally and prefers `LOCAL_DATABASE_URL` when `USE_LOCAL_DB=true`. On Render set `USE_DB=1` and provide `DATABASE_URL` for the managed Postgres.
+- Schema: Alembic migrations (`backend/alembic`) run in both environments. Render runs them on start (see `render.yaml`).
+- Data: Keep the same "raw" under `data/raw/` (local) and in S3 (Render). A bootstrap can pull raw from S3, run ingest+preprocess, then load processed into the DB.
+
+Local workflow (uses `.env` paths + local DB)
+1. Generate processed artifacts (from local raw and APIs):
+   ```bash
+   python -m src.pipeline.ingest
+   python -m src.pipeline.preprocess
+   ```
+2. Load processed into Postgres (today by default):
+   ```bash
+   # Ensure LOCAL_DATABASE_URL is set in .env and Postgres is running
+   $env:DATABASE_URL="postgresql+psycopg2://postgres@localhost:5432/susps_db_local"
+   python -m backend.app.etl.load_processed_to_db --date (Get-Date).ToString('yyyy-MM-dd')
+   ```
+3. Run the unified API + Dash (defaults to API data):
+   ```bash
+   uvicorn src.backend.api:app --reload
+   ```
+
+Render workflow (uses S3 raw + managed Postgres)
+- Required env vars: `USE_DB=1`, `DATABASE_URL`, `USE_S3_STORAGE=true`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_BUCKET_NAME`, `AWS_REGION`, `AWS_S3_DATA_PREFIX`.
+- First deploy (recommended): set `DB_BOOTSTRAP_ON_START=1` so the service will:
+  1) pull raw from S3 → `data/raw/`
+  2) run `ingest` → canonical raw CSVs
+  3) run `preprocess` → `data/processed/`
+  4) load processed into DB (today)
+  Then the service starts Gunicorn for the unified API.
+- Subsequent deploys: set `DB_BOOTSTRAP_ON_START=0` for faster starts.
+
+S3 parity tools (keep Render in sync with local `data/raw/`)
+- Check differences vs S3:
+  ```bash
+  python -m src.pipeline.s3_sync --check
+  ```
+- Upload missing/changed files:
+  ```bash
+  python -m src.pipeline.s3_sync --push
+  ```
+- Download from S3 (to reproduce Render locally):
+  ```bash
+  python -m src.pipeline.s3_sync --pull
+  ```
+
+API behavior (DB-first with graceful fallbacks)
+- When `USE_DB=1` (or `USE_LOCAL_DB=true`) and a `*_DATABASE_URL` is set, the unified API will read from DB for:
+  - `/energy`, `/traffic`: recent series (predicted vs actual)
+  - `/energy/summary`, `/traffic/summary`: area-level aggregates
+  - `/areas`: list of urban areas
+- If DB is disabled or empty, endpoints fall back to processed artifacts; if those are missing, they fall back to synthetic demo data.
+
+Dashboard defaults (real data by default)
+- The sidebar "Data source" defaults to "API (processed/DB)". Switch to "Demo (fallback)" only for offline demos.
+- Charts adapt to the available shape:
+  - Energy & Traffic: show predicted vs actual when DB-backed; otherwise 24h profiles from processed.
+  - Energy summary: DB → grouped by area (predicted/actual); processed → sector demand.
+  - Traffic summary: DB → grouped by area (predicted/actual); processed → hourly averages.
+
+Operational notes
+- After changing local `data/raw/`, run `s3_sync --check/--push` to upload diffs, then on Render either temporarily set `DB_BOOTSTRAP_ON_START=1` and redeploy, or run `python -m backend.app.etl.bootstrap_db` in a Render shell to regenerate processed artifacts and refresh the DB.
+- Keep secrets (DB and AWS) only in environment variables; `.env` remains uncommitted.
