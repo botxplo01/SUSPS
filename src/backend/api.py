@@ -394,7 +394,10 @@ def advisory_status(probe: bool = Query(False)):
                 )
             else:
                 gen._client.text_generation(  # type: ignore[attr-defined]
-                    "ping", model=gen.model, max_new_tokens=4, timeout=min(8, gen.timeout)
+                    "ping",
+                    model=gen.model,
+                    max_new_tokens=4,
+                    timeout=min(8, gen.timeout),
                 )
             info["probe_ok"] = True
         except Exception as e:  # pragma: no cover

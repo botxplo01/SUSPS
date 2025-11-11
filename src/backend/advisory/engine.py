@@ -3,7 +3,10 @@ from statistics import mean
 from typing import Any, Dict, List, Tuple, Optional
 import hashlib
 import json
+import logging
 from .hf_client import HFTextGenerator
+
+logger = logging.getLogger("susps.hf")
 
 # cache: key -> (timestamp, text, model)
 _CACHE: Dict[str, Tuple[float, str, Optional[str]]] = {}
@@ -156,10 +159,29 @@ def generate_insights_from_scope(scope: str, bundles: Dict[str, Any]) -> Dict[st
             "model": model,
             "cached": True,
             "generated_at": dt.datetime.utcfromtimestamp(ts).isoformat() + "Z",
+            "fallback": False,
         }
 
     gen = HFTextGenerator()
     text = gen.generate(prompt)
     now_iso = dt.datetime.utcnow().isoformat() + "Z"
-    _cache_set(cache_key, text, gen.model)
-    return {"text": text, "model": gen.model, "cached": False, "generated_at": now_iso}
+    # Detect HF fallback string and avoid caching it
+    is_fallback = text.strip().startswith("Advisory engine is temporarily unavailable;")
+    if is_fallback:
+        try:
+            logger.warning(
+                "Advisory fallback used (scope=%s, model=%s). Consider increasing HF_TIMEOUT or checking token/model access.",
+                scope,
+                gen.model,
+            )
+        except Exception:
+            pass
+    else:
+        _cache_set(cache_key, text, gen.model)
+    return {
+        "text": text,
+        "model": gen.model,
+        "cached": False,
+        "generated_at": now_iso,
+        "fallback": is_fallback,
+    }
