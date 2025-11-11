@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 import os
 
@@ -10,8 +9,10 @@ from backend.app.etl.load_processed_to_db import main as load_main
 try:
     from src.pipeline.s3_sync import sync_raw_from_s3  # type: ignore
 except Exception:
+
     def sync_raw_from_s3() -> int:  # fallback no-op if boto3 not installed
         return 0
+
 
 # Pipeline modules
 from src.pipeline import preprocess as _pp

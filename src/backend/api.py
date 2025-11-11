@@ -72,6 +72,7 @@ def set_config(payload: ConfigPayload):
 
 # --- Optional database wiring (enabled via env) ---
 
+
 def _truthy(val: Optional[str]) -> bool:
     return str(val).lower() in {"1", "true", "yes", "on"}
 
@@ -83,9 +84,14 @@ def _normalize_db_url(url: str) -> str:
         return url.replace("postgresql://", "postgresql+psycopg2://", 1)
     return url
 
+
 _DB_ENABLED = False
 try:
-    _want_db = _truthy(os.getenv("USE_DB")) or _truthy(os.getenv("USE_LOCAL_DB")) or bool(os.getenv("DATABASE_URL"))
+    _want_db = (
+        _truthy(os.getenv("USE_DB"))
+        or _truthy(os.getenv("USE_LOCAL_DB"))
+        or bool(os.getenv("DATABASE_URL"))
+    )
     _raw_url = ""
     # Prefer LOCAL_DATABASE_URL when explicitly using local DB
     if _truthy(os.getenv("USE_LOCAL_DB")) and os.getenv("LOCAL_DATABASE_URL"):
@@ -239,7 +245,10 @@ def energy_summary():
                         text("AVG(energy_consumption.predicted_demand) as predicted"),
                         text("AVG(energy_consumption.actual_demand) as actual"),
                     )
-                    .join(EnergyConsumption, EnergyConsumption.area_id == UrbanArea.area_id)
+                    .join(
+                        EnergyConsumption,
+                        EnergyConsumption.area_id == UrbanArea.area_id,
+                    )
                     .group_by(UrbanArea.area_id, UrbanArea.name)
                     .order_by(UrbanArea.area_id)
                     .all()

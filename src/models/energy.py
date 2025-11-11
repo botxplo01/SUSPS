@@ -37,15 +37,11 @@ def daily_profile_from_processed(
         daily_budget = total_annual / 365.0
         hours = list(range(24))
         base = [
-            0.5
-            if h < 6
-            else 0.9
-            if h < 9
-            else 0.7
-            if h < 16
-            else 1.0
-            if h < 20
-            else 0.6
+            (
+                0.5
+                if h < 6
+                else 0.9 if h < 9 else 0.7 if h < 16 else 1.0 if h < 20 else 0.6
+            )
             for h in hours
         ]
         s = sum(base)

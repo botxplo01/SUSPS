@@ -4,7 +4,6 @@ import argparse
 from datetime import datetime, date, timezone
 from typing import Iterable, List, Tuple
 
-import pandas as pd
 from sqlalchemy import delete, func
 
 # Ensure DB session and models are available from backend package
@@ -16,7 +15,9 @@ from backend.app.models.tables import (
 )  # type: ignore
 
 # Reuse processed-data readers so we honor the same logic the API uses
-from src.models.energy import daily_profile_from_processed as energy_daily_from_processed
+from src.models.energy import (
+    daily_profile_from_processed as energy_daily_from_processed,
+)
 from src.models.energy import daily_profile as energy_daily_synth
 from src.models.traffic import (
     daily_profile_from_processed as traffic_daily_from_processed,
@@ -26,9 +27,13 @@ from src.pipeline import config as _cfg
 
 
 def _ensure_areas(db) -> List[int]:
-    ids = [row[0] for row in db.query(UrbanArea.area_id).order_by(UrbanArea.area_id).all()]
+    ids = [
+        row[0] for row in db.query(UrbanArea.area_id).order_by(UrbanArea.area_id).all()
+    ]
     if not ids:
-        raise RuntimeError("No urban areas found; seed urban areas before loading features.")
+        raise RuntimeError(
+            "No urban areas found; seed urban areas before loading features."
+        )
     return ids
 
 

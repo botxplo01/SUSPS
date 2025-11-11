@@ -190,13 +190,17 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                 ),
                 dbc.Row(
                     [
-                        dbc.Col(dcc.Graph(id="traffic-graph", figure=fig_traffic), md=6),
+                        dbc.Col(
+                            dcc.Graph(id="traffic-graph", figure=fig_traffic), md=6
+                        ),
                         dbc.Col(dcc.Graph(id="energy-summary-graph"), md=6),
                     ]
                 ),
-                dbc.Row([
-                    dbc.Col(dcc.Graph(id="traffic-summary-graph"), md=12),
-                ]),
+                dbc.Row(
+                    [
+                        dbc.Col(dcc.Graph(id="traffic-summary-graph"), md=12),
+                    ]
+                ),
             ]
         )
 
@@ -312,27 +316,41 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                 pred = [it.get("predicted") for it in items]
                 act = [it.get("actual") for it in items]
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(x=xs, y=pred, mode="lines+markers", name="predicted"))
-                fig.add_trace(go.Scatter(x=xs, y=act, mode="lines+markers", name="actual"))
+                fig.add_trace(
+                    go.Scatter(x=xs, y=pred, mode="lines+markers", name="predicted")
+                )
+                fig.add_trace(
+                    go.Scatter(x=xs, y=act, mode="lines+markers", name="actual")
+                )
                 fig.update_layout(title_text="Energy: predicted vs actual")
                 return fig
             # Processed/demo shape: hour + demand_mwh
             hours = [it.get("hour") for it in items]
             vals = [it.get("demand_mwh") for it in items]
             return go.Figure(
-                data=[go.Scatter(x=hours, y=vals, mode="lines+markers", name="demand (MWh)")],
+                data=[
+                    go.Scatter(
+                        x=hours, y=vals, mode="lines+markers", name="demand (MWh)"
+                    )
+                ],
                 layout=go.Layout(title_text="Energy: daily profile"),
             )
 
         def _fig_traffic(items):
             # DB shape: items with ts, predicted_volume, actual_volume
-            if items and ("predicted_volume" in items[0] or "actual_volume" in items[0]):
+            if items and (
+                "predicted_volume" in items[0] or "actual_volume" in items[0]
+            ):
                 xs = [it.get("ts") for it in items]
                 pred = [it.get("predicted_volume") for it in items]
                 act = [it.get("actual_volume") for it in items]
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(x=xs, y=pred, mode="lines+markers", name="predicted"))
-                fig.add_trace(go.Scatter(x=xs, y=act, mode="lines+markers", name="actual"))
+                fig.add_trace(
+                    go.Scatter(x=xs, y=pred, mode="lines+markers", name="predicted")
+                )
+                fig.add_trace(
+                    go.Scatter(x=xs, y=act, mode="lines+markers", name="actual")
+                )
                 fig.update_layout(title_text="Traffic: predicted vs actual")
                 return fig
             # Processed/demo shape: hour + volume
@@ -364,7 +382,11 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
 
         def _fig_traffic_hourly(items):
             # DB shape: area_name + predicted/actual volume averages (not hourly) — show by area
-            if items and "area_name" in items[0] and ("predicted_volume" in items[0] or "actual_volume" in items[0]):
+            if (
+                items
+                and "area_name" in items[0]
+                and ("predicted_volume" in items[0] or "actual_volume" in items[0])
+            ):
                 x = [str(it.get("area_name")) for it in items]
                 pred = [float(it.get("predicted_volume", 0) or 0) for it in items]
                 act = [float(it.get("actual_volume", 0) or 0) for it in items]
@@ -375,7 +397,9 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                 return fig
             # Processed/demo shape: hourly averages
             hours = [int(it.get("hour", it.get("hourly", 0))) for it in items]
-            vals = [float(it.get("avg_veh_per_hour", it.get("volume", 0))) for it in items]
+            vals = [
+                float(it.get("avg_veh_per_hour", it.get("volume", 0))) for it in items
+            ]
             return go.Figure(
                 data=[go.Bar(x=hours, y=vals, name="avg veh/h")],
                 layout=go.Layout(title_text="Traffic average hourly volume"),

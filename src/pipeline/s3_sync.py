@@ -126,7 +126,9 @@ def diff_raw_vs_s3() -> Tuple[List[str], List[str]]:  # pragma: no cover - netwo
     return missing, mismatch
 
 
-def sync_raw_to_s3(dry_run: bool = False) -> Tuple[int, int]:  # pragma: no cover - network
+def sync_raw_to_s3(
+    dry_run: bool = False,
+) -> Tuple[int, int]:  # pragma: no cover - network
     """Upload missing/changed files in data/raw/ to S3 prefix.
 
     Returns (uploaded_files, skipped_files).
@@ -152,10 +154,16 @@ if __name__ == "__main__":  # pragma: no cover - utility CLI
     import argparse
 
     ap = argparse.ArgumentParser(description="S3 sync tools for data/raw")
-    ap.add_argument("--check", action="store_true", help="List missing/changed files on S3")
-    ap.add_argument("--push", action="store_true", help="Upload missing/changed files to S3")
+    ap.add_argument(
+        "--check", action="store_true", help="List missing/changed files on S3"
+    )
+    ap.add_argument(
+        "--push", action="store_true", help="Upload missing/changed files to S3"
+    )
     ap.add_argument("--pull", action="store_true", help="Download from S3 to data/raw")
-    ap.add_argument("--dry-run", action="store_true", help="Do not perform writes (for push)")
+    ap.add_argument(
+        "--dry-run", action="store_true", help="Do not perform writes (for push)"
+    )
     args = ap.parse_args()
 
     if args.check:
