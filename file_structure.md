@@ -25,11 +25,6 @@ SWE-Project--SUSPS/
 ├── docs/                              # documentation
 │   ├── specification.md
 │   └── user_guide.md
-├── notebooks/                         # exploratory analysis
-│   ├── data_exploration.ipynb
-│   ├── energy_forecast.ipynb
-│   ├── growth_model.ipynb
-│   └── traffic_simulation.ipynb
 ├── src/                               # application source
 │   ├── backend/                       # FastAPI + Dash mount
 │   │   ├── __init__.py

@@ -67,6 +67,35 @@ Outputs include:
 - `data/raw/`: worldpop_summary.csv, energy_demand.csv, traffic_flows.csv, environment_monthly.csv, socioeconomic.csv
 - `data/processed/`: worldpop_features.csv, energy_features.csv, traffic_features.csv, environment_features.csv, socioeconomic_features.csv, synthetic_demographics.csv, fairness_report.csv
 
+## Optional: Database mode (local/Render)
+
+The app can read recent series from PostgreSQL when enabled; otherwise it falls back to processed files, then synthetic data.
+
+Requirements
+- PostgreSQL 14+ (or compatible) with PostGIS. In psql you can enable extensions:
+  - CREATE EXTENSION postgis;
+  - CREATE EXTENSION postgis_topology;
+
+Configure
+- Set environment variables (examples):
+  - USE_DB=1
+  - DATABASE_URL=postgresql+psycopg2://postgres:YOUR_PASSWORD@localhost:5432/susps_db_local
+- Alternatively for local-only: USE_LOCAL_DB=true and LOCAL_DATABASE_URL=...
+
+Initialize tables (one-time)
+- Run this once to create the minimal tables used by the API:
+```python path=null start=null
+# Create tables in the configured DATABASE_URL
+from src.backend.db.base import Base
+from src.backend.db.session import engine
+import src.backend.db.tables  # ensure models are imported
+Base.metadata.create_all(bind=engine)
+```
+
+Notes
+- If geoalchemy2 is installed, an optional geometry column is available on urban_areas.
+- When USE_DB is enabled, the API serves energy/traffic endpoints from the DB first; if empty, processed/synthetic fallbacks are used.
+
 ## Deployment (Render)
 
 This repo includes a `Procfile` and a Render blueprint `render.yaml`.

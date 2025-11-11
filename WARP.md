@@ -9,6 +9,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - `black --check .` (use `black .` to format)
 - Run unit tests before pushing when changes affect logic.
 - Never commit secrets. Use environment variables locally and in Render.
+- Only use high-quality free, free-tier, freemium, and open-source resources/tools. Avoid paid tools or those requiring credit cards.
 
 ## Common commands
 
@@ -35,20 +36,6 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - Fairness report (optional): `python -m src.pipeline.fairness`
   - Outputs are written to `data/raw/` and `data/processed/` (see `README.md`).
 
-- Docker/PostGIS stack (optional, DB-enabled API)
-  - Copy env: `cp .env.example .env` (or create `.env`) to supply optional variables
-  - Start services: `docker compose up --build`
-    - API (FastAPI+Dash) listens on http://localhost:8000 with Dash at `/dash`
-    - PostGIS is exposed on port 5432
-  - Rebuild only API: `docker compose build api`
-  - Apply DB migrations (inside container): `docker compose exec api alembic upgrade head`
-  - Seed demo data (areas, energy, traffic):
-    - PowerShell: `.\\scripts\\seed-db.ps1` (seeds default files)
-    - Bash: `./scripts/seed-db.sh` (seeds default files)
-    - Custom: pass file paths to seed only specific files
-  - Optional DB-backed tests:
-    - Enable: set `E2E_DOCKER=1`, start stack (`docker compose up -d`), then `pytest -q`
-    - Tests live in `tests/test_db_endpoints.py` and hit `http://localhost:8000`
 
 - Linting/formatting
   - Install dev tools: `pip install -r requirements-dev.txt`
@@ -73,6 +60,41 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Architecture and structure (big picture)
 
+### Repository structure (streamlined)
+- src/
+  - backend/: unified FastAPI app (primary API for local + Render) and advisory module
+  - webapp/: single Dash UI used by both unified API and Docker backend
+  - pipeline/: ingest, preprocess, synthetic, and S3 sync utilities
+  - models/: lightweight local model stubs for demo/processed fallbacks
+- backend/: removed (Docker and container-only backend are not used for the final-year project)
+- tests/: unit and e2e tests
+- data/: raw and processed outputs (created on demand)
+
+Notes
+- The Docker backend is maintained for DB-enabled E2E tests but reuses the same Dash UI as the unified API.
+- Prefer src/backend/api.py for local and Render deployments.
+
+### Feature: AI Advisory Engine (Hugging Face)
+- Purpose: Turns SUSPS predictions (growth, energy, traffic) into actionable, model-generated insights displayed in the UI.
+- How it works:
+  - Backend endpoint `/advisory/{scope}` compiles recent predictions (DB → processed → synthetic), builds a compact summary, and queries a Hugging Face model for insights via the free Inference API.
+  - Default model: `meta-llama/Meta-Llama-3.1-8B-Instruct` with a lightweight fallback `TinyLlama/TinyLlama-1.1B-Chat-v1.0` (free-tier friendly).
+  - The Dash UI shows an “Insights” panel on Dashboard, Growth, Energy, and Traffic pages that calls the advisory endpoint and renders markdown.
+- Configuration:
+  - Env vars: `HUGGINGFACE_API_KEY` (preferred) or `HF_API_TOKEN`/`HUGGINGFACEHUB_API_TOKEN`.
+  - Optional: `HF_MODEL` to override the default model.
+- Notes:
+  - Requests are cached (10 min) to control latency/cost; if the API is unavailable, a deterministic rule-based fallback text is returned.
+  - Stable cache key (sha256) avoids cache churn; includes model and timestamp.
+  - Small retry with exponential backoff for transient free-tier queueing.
+  - Batch endpoint `/advisory_batch` computes multiple scopes concurrently with shared data bundles.
+  - Complies with the project rule to use only high-quality free/freemium/open-source resources.
+- Example (end-to-end):
+  1) Generate predictions (API or DB-backed)
+  2) UI/page loads and calls `/advisory/{scope}` (or `/advisory_batch` for multiple scopes)
+  3) Backend summarizes recent series and queries Hugging Face model
+  4) Markdown insights are rendered under the page's "Insights" section with model and timestamp
+
 SUSPS is organized around a lightweight FastAPI app that mounts a Dash UI, plus an optional, database-enabled variant for local development with PostGIS.
 
 - Web application (no-DB path used for dev/tests/deploy)
@@ -83,11 +105,6 @@ SUSPS is organized around a lightweight FastAPI app that mounts a Dash UI, plus 
 - Data pipeline (file-based artifacts)
   - Modules under `src/pipeline/` generate small CSV artifacts to `data/raw/` and `data/processed/`. Paths are centralized in `src/pipeline/config.py` and created on demand. External dataset locations are read from environment variables when provided.
 
-- Optional DB-enabled backend (Docker/PostGIS)
-  - Service composition: `docker-compose.yml` starts a PostGIS database and a FastAPI service built from `backend/`.
-  - API: `backend/app/main.py` assembles the app, includes API routes from `backend/app/api/routes.py`, and mounts a minimal Dash app from `backend/app/dash_app/`.
-  - Persistence: SQLAlchemy models in `backend/app/models/tables.py` with a declarative base (`backend/app/models/base.py`). `DATABASE_URL` is read from the environment (defaults to the `db` service). PostGIS types are used for geometry.
-  - Migrations: Alembic configured via `backend/alembic.ini` and `backend/alembic/env.py` with autogenerate support (`alembic upgrade head`).
 
 - Tests
   - `tests/test_api.py` exercises the no-DB FastAPI app’s `/health` endpoint using `httpx.AsyncClient`.
@@ -98,7 +115,9 @@ Key URLs
 - Health: `/health`
 - Dashboard: `/dash/`
 - Non-DB demo API (Render path): `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary`, `/config` (GET/POST)
-- DB-backed API (Docker): `/areas`, `/energy`, `/traffic`, summaries at `/energy/summary`, `/traffic/summary`
+- DB-backed API (when USE_DB is enabled): `/areas`, `/energy`, `/traffic`, summaries at `/energy/summary`, `/traffic/summary`
+- AI Advisory: `/advisory/{scope}` where `scope` ∈ {`dashboard`,`growth`,`energy`,`traffic`} (returns markdown insights)
+- AI Advisory Batch: `/advisory_batch?scopes=dashboard,energy` (returns multiple scopes in one call)
 
 UI notes (Render):
 - The dashboard includes a "Data source" toggle (Demo | API). Default is controlled by env var `DEFAULT_DATA_SOURCE` (demo/api). The toggle updates Growth/Energy/Traffic charts by calling local model stubs or the API endpoints.
@@ -127,6 +146,8 @@ Examples (non-DB demo responses, truncated):
   - Growth forecast is precomputed to `data/processed/growth_forecast_city.csv` when census data is available.
 
 ## Latest changes (2025-11-10)
+
+- New: AI Advisory Engine using Hugging Face Inference API, endpoint `/advisory/{scope}` and UI “Insights” sections across pages.
 
 - UI: Fixed, dark sidebar flush-left with full-width active highlight; resolved Dash `Div` children error; placeholders render.
 - Pipeline: API-first ingestion for weather (OpenWeather), air quality (OpenAQ), traffic (TomTom) with fallbacks to local raw files and then synthetic.

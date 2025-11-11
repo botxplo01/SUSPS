@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi import Query
 from fastapi.middleware.cors import CORSMiddleware
 from a2wsgi import WSGIMiddleware
 from starlette.responses import JSONResponse
@@ -30,6 +31,7 @@ from src.models.traffic import (
     daily_profile_from_processed as traffic_profile_from_processed,
 )
 from src.webapp.app import create_dash_app
+from src.backend.advisory import generate_insights_from_scope
 
 app = FastAPI(title="SUSPS Backend", version="0.1.0")
 
@@ -103,8 +105,12 @@ try:
         _db_url = _normalize_db_url(_raw_url)
         # ensure backend.app.core.db sees the normalized URL
         os.environ["DATABASE_URL"] = _db_url
-        from backend.app.core.db import SessionLocal  # type: ignore
-        from backend.app.models.tables import UrbanArea, EnergyConsumption, TrafficFlow  # type: ignore
+        from src.backend.db.session import SessionLocal  # type: ignore
+        from src.backend.db.tables import (
+            UrbanArea,
+            EnergyConsumption,
+            TrafficFlow,
+        )  # type: ignore
         from sqlalchemy import text  # type: ignore
 
         _DB_ENABLED = True
@@ -355,3 +361,79 @@ def list_areas():
             return {"items": [{"area_id": r[0], "name": r[1]} for r in rows]}
     except Exception as e:
         return {"items": [], "detail": str(e)}
+
+
+# --- AI advisory (Hugging Face) ---
+@app.get("/advisory/{scope}")
+def advisory(scope: str, zone_id: Optional[str] = Query(None)):
+    """
+    Return markdown insights for a given scope: dashboard|growth|energy|traffic.
+    Uses recent data from existing endpoints (DB → processed → synthetic).
+    """
+    scope_l = (scope or "dashboard").lower()
+    # Preload bundles once
+    bundles = {}
+    try:
+        g = (demo_growth() or {}).get("items", [])
+        e = (demo_energy() or {}).get("items", [])
+        t = (demo_traffic() or {}).get("items", [])
+        if scope_l in ("dashboard", "growth"):
+            bundles["growth"] = g
+        if scope_l in ("dashboard", "energy"):
+            bundles["energy"] = e
+        if scope_l in ("dashboard", "traffic"):
+            bundles["traffic"] = t
+    except Exception:
+        bundles.setdefault("growth", [])
+        bundles.setdefault("energy", [])
+        bundles.setdefault("traffic", [])
+
+    res = generate_insights_from_scope(scope_l, bundles)
+    return {
+        "scope": scope_l,
+        "insights": res.get("text", ""),
+        "model": res.get("model"),
+        "cached": res.get("cached", False),
+        "generated_at": res.get("generated_at"),
+    }
+
+
+@app.get("/advisory_batch")
+def advisory_batch(scopes: str = Query("dashboard,growth,energy,traffic")):
+    """
+    Batch insights for multiple scopes in one call. Example: /advisory_batch?scopes=energy,traffic
+    """
+    wanted = [s.strip().lower() for s in (scopes or "").split(",") if s.strip()]
+    valid = {"dashboard", "growth", "energy", "traffic"}
+    scopes_list = [s for s in wanted if s in valid] or ["dashboard"]
+
+    # Preload bundles once and reuse
+    try:
+        g = (demo_growth() or {}).get("items", [])
+        e = (demo_energy() or {}).get("items", [])
+        t = (demo_traffic() or {}).get("items", [])
+    except Exception:
+        g, e, t = [], [], []
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _for_scope(s: str):
+        b = {}
+        if s in ("dashboard", "growth"):
+            b["growth"] = g
+        if s in ("dashboard", "energy"):
+            b["energy"] = e
+        if s in ("dashboard", "traffic"):
+            b["traffic"] = t
+        return s, generate_insights_from_scope(s, b)
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=min(3, len(scopes_list))) as ex:
+        for s, res in ex.map(_for_scope, scopes_list):
+            results[s] = {
+                "insights": res.get("text", ""),
+                "model": res.get("model"),
+                "cached": res.get("cached", False),
+                "generated_at": res.get("generated_at"),
+            }
+    return {"results": results}
