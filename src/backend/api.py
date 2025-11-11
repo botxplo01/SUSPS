@@ -7,6 +7,7 @@ from starlette.responses import RedirectResponse
 from pydantic import BaseModel
 import os
 from typing import Optional
+import requests
 
 # Load .env in local dev so API picks up LOCAL_DATABASE_URL and local paths
 try:  # pragma: no cover - optional
@@ -380,22 +381,66 @@ def advisory_status(probe: bool = Query(False)):
         "timeout": gen.timeout,
         "client": bool(getattr(gen, "_client", None) is not None),
         "probe_ok": None,
+        "task_used": None,
         "error": None,
     }
-    if probe and getattr(gen, "_client", None) is not None:
+    if probe:
         try:
-            # tiny probe to confirm connectivity without caching
-            if gen._is_text2text(gen.model):  # type: ignore[attr-defined]
+            # Prefer Chat Completions for instruct models
+            if gen._is_conversational(gen.model):  # type: ignore[attr-defined]
+                # Try huggingface_hub Chat Completions first
+                try:
+                    chat = getattr(gen._client, "chat", None)
+                    comps = getattr(chat, "completions", None)
+                    create = getattr(comps, "create", None)
+                    if callable(create):
+                        create(
+                            model=gen.model,
+                            messages=[{"role": "user", "content": "ping"}],
+                            max_tokens=4,
+                        )
+                        info["probe_ok"] = True
+                        info["task_used"] = "chat-completions"
+                    else:
+                        raise AttributeError("chat.completions.create not available")
+                except Exception:
+                    # Raw HTTP to router as fallback
+                    token = (
+                        os.getenv("HUGGINGFACE_API_KEY")
+                        or os.getenv("HF_API_TOKEN")
+                        or os.getenv("HUGGINGFACEHUB_API_TOKEN")
+                        or os.getenv("HF_API_KEY")
+                    )
+                    if token:
+                        r = requests.post(
+                            "https://router.huggingface.co/v1/chat/completions",
+                            headers={"Authorization": f"Bearer {token}"},
+                            json={
+                                "model": gen.model,
+                                "messages": [{"role": "user", "content": "ping"}],
+                                "max_tokens": 4,
+                            },
+                            timeout=gen.timeout,
+                        )
+                        r.raise_for_status()
+                        info["probe_ok"] = True
+                        info["task_used"] = "chat-completions"
+                    else:
+                        raise RuntimeError("No HF token available for probe")
+            elif gen._is_text2text(gen.model):  # type: ignore[attr-defined]
                 gen._client.post(  # type: ignore[attr-defined]
                     json={"inputs": "ping", "parameters": {"max_new_tokens": 4}},
                     model=gen.model,
                     task="text2text-generation",
                 )
+                info["probe_ok"] = True
+                info["task_used"] = "text2text-generation"
             else:
                 gen._client.text_generation(  # type: ignore[attr-defined]
                     "ping", model=gen.model, max_new_tokens=4
                 )
-            info["probe_ok"] = True
+                info["probe_ok"] = True
+                info["task_used"] = "text-generation"
         except Exception as e:  # pragma: no cover
             info["probe_ok"] = False
             info["error"] = str(e)
