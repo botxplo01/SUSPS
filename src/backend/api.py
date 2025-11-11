@@ -395,6 +395,7 @@ def advisory(scope: str, zone_id: Optional[str] = Query(None)):
         "model": res.get("model"),
         "cached": res.get("cached", False),
         "generated_at": res.get("generated_at"),
+        "fallback": res.get("fallback", False),
     }
 
 
@@ -435,5 +436,6 @@ def advisory_batch(scopes: str = Query("dashboard,growth,energy,traffic")):
                 "model": res.get("model"),
                 "cached": res.get("cached", False),
                 "generated_at": res.get("generated_at"),
+                "fallback": res.get("fallback", False),
             }
     return {"results": results}

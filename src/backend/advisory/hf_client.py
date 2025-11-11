@@ -19,6 +19,11 @@ _DEFAULT_MODELS = [
 ]
 
 
+FALLBACK_PREFIX = (
+    "Advisory engine is temporarily unavailable; using rule-based summary."
+)
+
+
 class HFTextGenerator:
     def __init__(self, model: Optional[str] = None, timeout: float = 12.0):
         token = (
@@ -27,7 +32,12 @@ class HFTextGenerator:
             or os.getenv("HUGGINGFACEHUB_API_TOKEN")
         )
         self.model = model or os.getenv("HF_MODEL") or _DEFAULT_MODELS[0]
-        self.timeout = timeout
+        # Allow override from env
+        try:
+            timeout_env = float(os.getenv("HF_TIMEOUT", "0") or 0)
+        except Exception:
+            timeout_env = 0.0
+        self.timeout = timeout_env or timeout
         self._client = None
         if InferenceClient and token:
             try:
@@ -107,7 +117,7 @@ class HFTextGenerator:
                         break
         # Fallback: minimal deterministic advisory text
         return (
-            "Advisory engine is temporarily unavailable; using rule-based summary.\n\n"
+            f"{FALLBACK_PREFIX}\n\n"
             "Key trends: see recent peaks, dips, and changes; prioritize mitigation for sustained increases in congestion, demand spikes, and AQI elevations.\n"
             "Actions: optimize signal timing on peak corridors, stagger energy loads during evening peaks, increase public transit headways during commute windows, and prepare heat-health messaging during forecasted hot days."
         )
