@@ -32,6 +32,7 @@ from src.models.traffic import (
 )
 from src.webapp.app import create_dash_app
 from src.backend.advisory import generate_insights_from_scope
+from src.backend.advisory.hf_client import HFTextGenerator
 
 app = FastAPI(title="SUSPS Backend", version="0.1.0")
 
@@ -364,6 +365,43 @@ def list_areas():
 
 
 # --- AI advisory (Hugging Face) ---
+@app.get("/advisory/status")
+def advisory_status(probe: bool = Query(False)):
+    token_present = bool(
+        os.getenv("HUGGINGFACE_API_KEY")
+        or os.getenv("HF_API_TOKEN")
+        or os.getenv("HUGGINGFACEHUB_API_TOKEN")
+    )
+    gen = HFTextGenerator()
+    info = {
+        "token_present": token_present,
+        "model": gen.model,
+        "timeout": gen.timeout,
+        "client": bool(getattr(gen, "_client", None) is not None),
+        "probe_ok": None,
+        "error": None,
+    }
+    if probe and getattr(gen, "_client", None) is not None:
+        try:
+            # tiny probe to confirm connectivity without caching
+            if gen._is_text2text(gen.model):  # type: ignore[attr-defined]
+                gen._client.post(  # type: ignore[attr-defined]
+                    json={"inputs": "ping", "parameters": {"max_new_tokens": 4}},
+                    model=gen.model,
+                    task="text2text-generation",
+                    timeout=min(8, gen.timeout),
+                )
+            else:
+                gen._client.text_generation(  # type: ignore[attr-defined]
+                    "ping", model=gen.model, max_new_tokens=4, timeout=min(8, gen.timeout)
+                )
+            info["probe_ok"] = True
+        except Exception as e:  # pragma: no cover
+            info["probe_ok"] = False
+            info["error"] = str(e)
+    return info
+
+
 @app.get("/advisory/{scope}")
 def advisory(scope: str, zone_id: Optional[str] = Query(None)):
     """
