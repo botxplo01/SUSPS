@@ -2,6 +2,14 @@
 
 This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
+## Rules (project)
+- Keep GitHub tracking issues in sync with roadmap milestones and tasks. Use `gh issue` to view/update when appropriate.
+- After modifying code, always run formatting and lint checks locally:
+  - `ruff check .` (use `ruff check --fix .` to autofix)
+  - `black --check .` (use `black .` to format)
+- Run unit tests before pushing when changes affect logic.
+- Never commit secrets. Use environment variables locally and in Render.
+
 ## Common commands
 
 - Python setup (3.11.x as per `render.yaml`)
