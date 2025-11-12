@@ -388,35 +388,63 @@ def advisory_status(probe: bool = Query(False)):
         try:
             # Prefer Chat Completions for instruct models
             if gen._is_conversational(gen.model):  # type: ignore[attr-defined]
-                # Try huggingface_hub Chat Completions first
-                try:
-                    chat = getattr(gen._client, "chat", None)
-                    comps = getattr(chat, "completions", None)
-                    create = getattr(comps, "create", None)
-                    if callable(create):
-                        create(
-                            model=gen.model,
-                            messages=[{"role": "user", "content": "ping"}],
-                            max_tokens=4,
-                        )
-                        info["probe_ok"] = True
-                        info["task_used"] = "chat-completions"
-                    else:
-                        raise AttributeError("chat.completions.create not available")
-                except Exception:
-                    # Raw HTTP to router as fallback
-                    token = (
-                        os.getenv("HUGGINGFACE_API_KEY")
-                        or os.getenv("HF_API_TOKEN")
-                        or os.getenv("HUGGINGFACEHUB_API_TOKEN")
-                        or os.getenv("HF_API_KEY")
+                # If explicitly forced, probe conversational task directly (Inference API)
+                if (
+                    os.getenv("HF_FORCE_TASK", "").strip(" '\"\t\n\r").lower()
+                    == "conversational"
+                ):
+                    token = getattr(gen, "_token", None)
+                    if not token:
+                        raise RuntimeError("No HF token available for probe")
+                    base_m = gen.model.split(":", 1)[0]
+                    r = requests.post(
+                        f"https://api-inference.huggingface.co/models/{base_m}",
+                        headers={"Authorization": f"Bearer {token}"},
+                        json={
+                            "inputs": {
+                                "past_user_inputs": [],
+                                "generated_responses": [],
+                                "text": "ping",
+                            },
+                            "parameters": {"max_new_tokens": 4},
+                        },
+                        timeout=gen.timeout,
                     )
-                    if token:
+                    r.raise_for_status()
+                    info["probe_ok"] = True
+                    info["task_used"] = "conversational"
+                else:
+                    # Try huggingface_hub Chat Completions first if available (uses HF config/token), then router
+                    try:
+                        chat = getattr(gen._client, "chat", None)
+                        comps = getattr(chat, "completions", None)
+                        create = getattr(comps, "create", None)
+                        if callable(create):
+                            create(
+                                model=gen.model,
+                                messages=[{"role": "user", "content": "ping"}],
+                                max_tokens=4,
+                            )
+                            info["probe_ok"] = True
+                            info["task_used"] = "chat-completions"
+                        else:
+                            raise AttributeError(
+                                "chat.completions.create not available"
+                            )
+                    except Exception:
+                        token = getattr(gen, "_token", None)
+                        if not token:
+                            raise RuntimeError("No HF token available for probe")
+                        m = gen.model.replace(
+                            "Meta-Llama-3.1-8B-Instruct", "Llama-3.1-8B-Instruct"
+                        )
+                        if ":" in m:
+                            m = m.split(":", 1)[0]
                         r = requests.post(
                             "https://router.huggingface.co/v1/chat/completions",
                             headers={"Authorization": f"Bearer {token}"},
                             json={
-                                "model": gen.model,
+                                "model": m,
                                 "messages": [{"role": "user", "content": "ping"}],
                                 "max_tokens": 4,
                             },
@@ -425,8 +453,6 @@ def advisory_status(probe: bool = Query(False)):
                         r.raise_for_status()
                         info["probe_ok"] = True
                         info["task_used"] = "chat-completions"
-                    else:
-                        raise RuntimeError("No HF token available for probe")
             elif gen._is_text2text(gen.model):  # type: ignore[attr-defined]
                 gen._client.post(  # type: ignore[attr-defined]
                     json={"inputs": "ping", "parameters": {"max_new_tokens": 4}},

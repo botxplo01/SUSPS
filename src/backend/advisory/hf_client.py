@@ -2,6 +2,14 @@ import os
 from typing import Optional
 import requests
 
+# Ensure .env is loaded for tokens in contexts where the API module didn't run load_dotenv yet
+try:  # pragma: no cover - optional
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:
+    pass
+
 try:
     from huggingface_hub import InferenceClient
 except Exception:  # pragma: no cover - optional dependency
@@ -10,7 +18,7 @@ except Exception:  # pragma: no cover - optional dependency
 
 _DEFAULT_MODELS = [
     # default per project decision (license accepted)
-    "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    "meta-llama/Llama-3.1-8B-Instruct",
     # alternative generalist
     "HuggingFaceH4/zephyr-7b-beta",
     # seq2seq fallback (text2text)
@@ -40,11 +48,11 @@ class HFTextGenerator:
             or os.getenv("HF_MODEL_NAME")  # user-provided name
             or _DEFAULT_MODELS[0]
         )
-        provider = (os.getenv("HF_CHAT_PROVIDER") or "").strip()
-        if provider and ":" not in base_model:
-            self.model = f"{base_model}:{provider}"
-        else:
-            self.model = base_model
+        # Normalize display model (avoid provider suffix and alias)
+        disp = base_model.replace("Meta-Llama-3.1-8B-Instruct", "Llama-3.1-8B-Instruct")
+        if ":" in disp:
+            disp = disp.split(":", 1)[0]
+        self.model = disp
         # Allow override from env
         try:
             timeout_env = float(os.getenv("HF_TIMEOUT", "0") or 0)
@@ -67,7 +75,10 @@ class HFTextGenerator:
     def _is_conversational(self, model_name: str) -> bool:
         name = (model_name or "").lower()
         # Heuristic: Llama 3.x instruct models expose chat-style interfaces
-        force = os.getenv("HF_FORCE_TASK", "").lower() == "conversational"
+        force = (
+            os.getenv("HF_FORCE_TASK", "").strip(" '\"\t\n\r").lower()
+            == "conversational"
+        )
         return force or ("meta-llama" in name or "llama-3" in name)
 
     # --- Chat Completions helpers (preferred for Llama Instruct) ---
@@ -80,6 +91,15 @@ class HFTextGenerator:
         except Exception:
             return False
 
+    def _normalize_router_model(self, model_id: str) -> str:
+        mid = (model_id or "").strip()
+        # Map known alias used in some docs to the actual router id
+        mid = mid.replace("Meta-Llama-3.1-8B-Instruct", "Llama-3.1-8B-Instruct")
+        # Drop provider suffix for router
+        if ":" in mid:
+            mid = mid.split(":", 1)[0]
+        return mid
+
     def _chat_complete_hfhub(
         self, prompt: str, model_id: str, max_new_tokens: int, temperature: float
     ) -> Optional[str]:
@@ -87,7 +107,7 @@ class HFTextGenerator:
             return None
         try:
             completion = self._client.chat.completions.create(
-                model=model_id,
+                model=self._normalize_router_model(model_id),
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=max_new_tokens,
                 temperature=temperature,
@@ -100,6 +120,7 @@ class HFTextGenerator:
             content = getattr(msg, "content", None)
             return (content or "").strip() or None
         except Exception:
+            # Let caller decide on base-model retry
             return None
 
     def _chat_complete_requests(
@@ -112,13 +133,27 @@ class HFTextGenerator:
                 "https://router.huggingface.co/v1/chat/completions",
                 headers={"Authorization": f"Bearer {self._token}"},
                 json={
-                    "model": model_id,
+                    "model": self._normalize_router_model(model_id),
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": max_new_tokens,
                     "temperature": temperature,
                 },
                 timeout=self.timeout,
             )
+            # If provider-suffixed model fails with 400/404, retry without suffix
+            if r.status_code in (400, 404) and ":" in model_id:
+                base_model = model_id.split(":", 1)[0]
+                r = requests.post(
+                    "https://router.huggingface.co/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {self._token}"},
+                    json={
+                        "model": base_model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": max_new_tokens,
+                        "temperature": temperature,
+                    },
+                    timeout=self.timeout,
+                )
             r.raise_for_status()
             data = r.json()
             choices = data.get("choices") or []
@@ -144,9 +179,12 @@ class HFTextGenerator:
                     if not self._client and not self._token:
                         break
                     if self._is_text2text(m):
-                        # Use text2text-generation for seq2seq models like FLAN-T5
-                        if self._client:
-                            resp = self._client.post(
+                        # Use text2text-generation for seq2seq models like FLAN-T5 via Inference API
+                        if self._token:
+                            api_model = m.split(":", 1)[0]
+                            r = requests.post(
+                                f"https://api-inference.huggingface.co/models/{api_model}",
+                                headers={"Authorization": f"Bearer {self._token}"},
                                 json={
                                     "inputs": prompt,
                                     "parameters": {
@@ -154,40 +192,83 @@ class HFTextGenerator:
                                         "temperature": temperature,
                                     },
                                 },
-                                model=m,
-                                task="text2text-generation",
+                                timeout=self.timeout,
                             )
-                            # Possible shapes: list[{"generated_text": str}] or dict
-                            if (
-                                isinstance(resp, list)
-                                and resp
-                                and isinstance(resp[0], dict)
-                            ):
-                                out = resp[0].get("generated_text") or ""
-                            elif isinstance(resp, dict):
-                                out = (
-                                    resp.get("generated_text")
-                                    or resp.get("output_text")
-                                    or ""
-                                )
-                            else:
-                                out = str(resp)
-                            if out.strip():
-                                return out
+                            if r.status_code in (200, 201):
+                                resp = r.json()
+                                # Possible shapes: list[{"generated_text": str}] or dict
+                                if (
+                                    isinstance(resp, list)
+                                    and resp
+                                    and isinstance(resp[0], dict)
+                                ):
+                                    out = resp[0].get("generated_text") or ""
+                                elif isinstance(resp, dict):
+                                    out = (
+                                        resp.get("generated_text")
+                                        or resp.get("output_text")
+                                        or ""
+                                    )
+                                else:
+                                    out = str(resp)
+                                if out and out.strip():
+                                    return out
                     elif self._is_conversational(m):
-                        # Prefer Chat Completions for Llama-style instruct models
-                        out = self._chat_complete_hfhub(
-                            prompt, m, max_new_tokens, temperature
-                        )
-                        if not out:
-                            out = self._chat_complete_requests(
+                        # Prefer Chat Completions (router) for Llama-style instruct models unless forced to 'conversational'
+                        if (
+                            os.getenv("HF_FORCE_TASK", "").strip(" '\"\t\n\r").lower()
+                            == "conversational"
+                        ):
+                            # Directly use classic HF conversational task via Inference API
+                            if self._token:
+                                api_model = m.split(":", 1)[0]
+                                r = requests.post(
+                                    f"https://api-inference.huggingface.co/models/{api_model}",
+                                    headers={"Authorization": f"Bearer {self._token}"},
+                                    json={
+                                        "inputs": {
+                                            "past_user_inputs": [],
+                                            "generated_responses": [],
+                                            "text": prompt,
+                                        },
+                                        "parameters": {
+                                            "max_new_tokens": max_new_tokens,
+                                            "temperature": temperature,
+                                        },
+                                    },
+                                    timeout=self.timeout,
+                                )
+                                out = ""
+                                if r.status_code in (200, 201):
+                                    resp = r.json()
+                                    if isinstance(resp, dict):
+                                        out = resp.get("generated_text") or ""
+                                        if not out:
+                                            conv = resp.get("conversation") or {}
+                                            gr = conv.get("generated_responses") or []
+                                            if gr:
+                                                out = gr[-1] or ""
+                                    else:
+                                        out = str(resp)
+                                if out.strip():
+                                    return out
+                        else:
+                            # Try huggingface_hub Chat Completions first (may have token via HF config), then router
+                            out = self._chat_complete_hfhub(
                                 prompt, m, max_new_tokens, temperature
                             )
-                        if out and out.strip():
-                            return out
-                        # Fallback to classic HF conversational task
-                        if self._client:
-                            resp = self._client.post(
+                            if not out:
+                                out = self._chat_complete_requests(
+                                    prompt, m, max_new_tokens, temperature
+                                )
+                            if out and out.strip():
+                                return out
+                        # Fallback to classic HF conversational task (last resort) via Inference API
+                        if self._token:
+                            api_model = m.split(":", 1)[0]
+                            r = requests.post(
+                                f"https://api-inference.huggingface.co/models/{api_model}",
+                                headers={"Authorization": f"Bearer {self._token}"},
                                 json={
                                     "inputs": {
                                         "past_user_inputs": [],
@@ -199,19 +280,22 @@ class HFTextGenerator:
                                         "temperature": temperature,
                                     },
                                 },
-                                model=m,
-                                task="conversational",
+                                timeout=self.timeout,
                             )
                             out = ""
-                            if isinstance(resp, dict):
-                                out = resp.get("generated_text") or ""
-                                if not out:
-                                    conv = resp.get("conversation") or {}
-                                    gr = conv.get("generated_responses") or []
-                                    if gr:
-                                        out = gr[-1] or ""
-                            else:
-                                out = str(resp)
+                            if r.status_code in (200, 201):
+                                resp = r.json()
+                                if isinstance(resp, dict):
+                                    out = resp.get("generated_text") or ""
+                                    if not out:
+                                        conv = resp.get("conversation") or {}
+                                        gr = conv.get("generated_responses") or []
+                                        if gr:
+                                            out = gr[-1] or ""
+                                else:
+                                    out = str(resp)
+                            if out.strip():
+                                return out
                             if out.strip():
                                 return out
                     else:
