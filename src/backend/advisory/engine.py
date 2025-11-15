@@ -58,10 +58,14 @@ def _summarize_timeseries(
     }
 
 
-def _build_prompt(scope: str, summaries: Dict[str, Any]) -> str:
+def _build_prompt(
+    scope: str, summaries: Dict[str, Any], zone_id: Optional[str] = None
+) -> str:
+    # If a zone_id is provided, mention the selected area in the header
+    context_line = f" Focus specifically on area/zone: {zone_id}." if zone_id else ""
     header = (
         "You are an urban analytics advisor embedded in the Smart Urban Simulation and Prediction System (SUSPS).\n"
-        "Given forecast outputs below, analyze trends and provide realistic, actionable, and context-aware advice.\n"
+        f"Given forecast outputs below{context_line}, analyze trends and provide realistic, actionable, and context-aware advice.\n"
         "Return concise insights followed by a prioritized action plan (short-term, medium-term).\n\n"
     )
     sections: List[str] = []
@@ -134,10 +138,13 @@ def _prepare_scope_data(scope: str, bundles: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def generate_insights_from_scope(scope: str, bundles: Dict[str, Any]) -> Dict[str, Any]:
+def generate_insights_from_scope(
+    scope: str, bundles: Dict[str, Any], zone_id: Optional[str] = None
+) -> Dict[str, Any]:
     """
     scope: one of 'dashboard', 'growth', 'energy', 'traffic'
     bundles: dict with any of keys 'growth', 'energy', 'traffic' as lists of items from endpoints
+    zone_id: optional selected area ID that the advisory should focus on (passed through to prompt)
     returns: {"text": markdown_text, "model": model_name, "cached": bool}
     """
     scope = (scope or "dashboard").lower()
@@ -145,9 +152,10 @@ def generate_insights_from_scope(scope: str, bundles: Dict[str, Any]) -> Dict[st
         scope if scope in {"dashboard", "growth", "energy", "traffic"} else "dashboard"
     )
     summary = _prepare_scope_data(scope, bundles)
-    prompt = _build_prompt(scope, summary)
-    # stable cache key (sha256 of sorted JSON)
-    summary_json = json.dumps(summary, sort_keys=True, default=str)
+    prompt = _build_prompt(scope, summary, zone_id=zone_id)
+    # stable cache key (sha256 of sorted JSON, including zone for context)
+    summary_with_zone = {"zone_id": zone_id, "data": summary}
+    summary_json = json.dumps(summary_with_zone, sort_keys=True, default=str)
     cache_key = (
         f"advisory:{scope}:{hashlib.sha256(summary_json.encode('utf-8')).hexdigest()}"
     )

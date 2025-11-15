@@ -2,57 +2,80 @@
 
 This document summarizes the current state of the SUSPS repository: what’s done, what’s next, and the desired end-state for the system.
 
-## Current status (2025-11-10)
-- Lint/format/typecheck/tests: green locally (Ruff, Black, Mypy). Pytest: 4 passed, 4 skipped; warnings noted (multipart suggestion, datetime.utcnow deprecation).
-- Frontend: Sidebar fixed, dark theme, flush-left with full-width active highlight; extra top spacing; placeholders for maps/tables show on all pages; resolved Dash `Div.__init__` children error.
-- Pipeline: API-first ingestion writes to `data/raw/` (OpenWeather default, Open‑Meteo optional; OpenAQ; TomTom). Preprocess writes to `data/processed/` (environment_features, energy_features, traffic_features, air_quality_daily). Census and precomputed growth forecast (`growth_forecast_city.csv`) added. Urban_Growth integrated with catalog and features.
-- API: `/growth` now prefers precomputed forecast, then census-based/processed, then synthetic. Added `/energy/summary` and `/traffic/summary`. Energy/traffic endpoints prefer processed data.
-- Config: Env alignment with `.env`; removed unused `COPERNICUS_PATH`, `NIGHTLIGHTS_PATH`, `GHSL_PATH`, `GOOGLE_MAPS_API_KEY`. Added `WEATHER_PROVIDER` (default `openweather`), `TRAFFIC_PROVIDER` (default `tomtom`), and `CITY_LAT/LON` defaults for Nairobi.
-- Docs: WARP.md and README reflect commands; this status doc updated.
+## Current status (2025-11-15)
+- Lint/format/typecheck/tests: green locally (Ruff, Black, Mypy). Pytest suite passes with the new simulation, time-series, and hotspot tests.
+- Backend (FastAPI):
+  - Core endpoints `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary`, `/config` remain in place with DB → processed → synthetic fallbacks.
+  - New deterministic features: `/simulate/run` (SIMULATE mode over growth/energy/traffic), `/ts/forecast` (generic time-series forecast), `/hotspots/areas` and `/hotspots/areas/forecast` (static + multi-year hotspot scores), `/areas`, `/processed_data`, `/simulation_inputs` (DB-backed metadata views), plus `/advisory/status`.
+  - AI advisory endpoints (`/advisory/{scope}`, `/advisory_batch`) are wired to free Hugging Face models via `HF_API_KEY` with caching and graceful degradation.
+- Pipeline and data layout: API-first ingestion writes to `data/<CITY>/raw/` (OpenWeather default, Open‑Meteo optional; OpenAQ; TomTom). Preprocess writes to `data/<CITY>/processed/` (environment_features, energy_features, traffic_features, air_quality_daily, hotspot CSVs). Census and precomputed growth forecast (`growth_forecast_city.csv`) plus Urban_Growth features remain integrated.
+- Storage and environments: Local runs with a local PostgreSQL instance plus file-based data under `data/<CITY>/{raw,processed}`; Render runs against managed PostgreSQL and AWS S3 bucket `susps-raw-data` (region `eu-north-1`) holding the same raw datasets. `src/pipeline.s3_sync` keeps local `data/<CITY>/raw/` and S3 in sync so results match between local and Render.
+- Frontend (Dash): Sidebar uses an `area-select` dropdown populated from `/areas`; there is no longer a Demo/API data-source toggle. On initial load (no area selected) each page shows descriptive text and placeholder charts only; charts and advisory are populated only once an area is chosen, and the advisory engine now receives the selected area (`zone_id`) so guidance is explicitly scoped.
+- Docs: WARP.md and README document the local+Render parity story (Postgres + S3), backend capabilities (simulation, time-series, hotspots), and the new area-driven frontend behavior; this status doc reflects that.
 
 ## 1) What’s implemented
 
-- App structure
-  - FastAPI + Dash (Render path, no DB): `src/backend/api.py` + `src/webapp/app.py`
-  - Optional DB-backed stack (Docker/PostGIS): `backend/` service with Alembic migrations and minimal Dash
-- Demo features (Render)
-  - Endpoints: `/health`, `/growth`, `/energy`, `/traffic`, `/config` (GET/POST)
-  - Dashboard charts for Growth, Energy, Traffic with a “Data source” toggle (Demo | API)
-  - Model stubs in `src/models/` generating synthetic data; can be extended to use pipeline outputs
-- DB-backed features (Docker)
-  - DB models and migrations (PostGIS geometry via GeoAlchemy)
-  - Seed scripts and demo data for `urban_areas`, `energy_consumption`, `traffic_flow`
-  - API endpoints: `/areas`, `/energy`, `/traffic`, summaries at `/energy/summary`, `/traffic/summary`
-  - Minimal DB-backed Dash with charts
-- Data pipeline
-  - Ingest → preprocess → synthetic → fairness modules under `src/pipeline/`
-  - Produces CSVs in `data/raw/` and `data/processed/`
+### Frontend map (pages  endpoints  data flow  advisory)
+
+- Dashboard
+  - Endpoints: `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary`, `/advisory/dashboard`.
+  - Area-driven behavior: Sidebar `area-select` dropdown is populated from `/areas`. Until an area is selected, the page shows descriptive text and placeholder charts only; once selected, the charts call the live API endpoints (which internally prefer DB/processed data with synthetic fallback as needed).
+  - Advisory: "Insights" panel is gated on area selection and then calls `/advisory/dashboard` (or batch variant).
+- Growth page
+  - Endpoints: `/growth`, `/advisory/growth`.
+  - Area-driven behavior: shares the same `area-select` gate as the Dashboard; shows only descriptions until an area is selected, then renders the growth series.
+  - Advisory: Uses `/advisory/growth` scoped to the selected area's growth context.
+- Energy page
+  - Endpoints: `/energy`, `/energy/summary`, planned `/energy/sector-summary` (future), `/advisory/energy`.
+  - Area-driven behavior: same `area-select` gate; charts are populated from `/energy` and `/energy/summary` only after an area is chosen.
+  - Advisory: Uses `/advisory/energy`, summarizing recent energy demand.
+- Traffic page
+  - Endpoints: `/traffic`, `/traffic/summary`, planned `/traffic/hourly` (future), `/advisory/traffic`.
+  - Area-driven behavior: same `area-select` gate; charts are populated from `/traffic` and `/traffic/summary` only after an area is chosen.
+  - Advisory: Uses `/advisory/traffic`, summarizing recent traffic flows.
+- Hotspot maps (planned UI)
+  - Endpoints: `/hotspots/areas`, `/hotspots/areas/forecast`.
+  - Behavior: backend and pipeline are ready; the UI will join hotspot scores with ward/zone GeoJSON to render choropleth maps, likely filtered by the selected area or city.
+
+|- App structure
+  - Unified FastAPI + Dash app for both local and Render: `src/backend/api.py` + `src/webapp/app.py`, with CORS, `/health`, and Dash mounted under `/dash/`.
+  - Database support: the unified app can run purely file-based or connect to PostgreSQL (local or Render-managed) when `USE_LOCAL_DB=true` or `USE_DB=1` and a `DATABASE_URL` is provided.
+  - Legacy Docker/PostGIS stack under `backend/` is retained for optional DB experiments/E2E tests but is not required for the final-year project.
+- Demo/API features (unified app)
+  - Endpoints: `/health`, `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary`, `/config` (GET/POST), `/areas`, `/processed_data`, `/simulation_inputs`, `/simulate/run`, `/ts/forecast`, `/hotspots/areas`, `/hotspots/areas/forecast`, plus advisory endpoints.
+  - UI now uses an area-driven pattern rather than a Demo/API toggle: charts and advisory are gated on `area-select` and always call the real API endpoints, which internally decide between DB/processed/synthetic data.
+  - AI Advisory endpoints (`/advisory/{scope}`, `/advisory_batch`, `/advisory/status`) integrated into the frontend, powered by free Hugging Face models with caching and graceful degradation. When `zone_id` is provided (from the selected area), it is included in the advisory prompt and cache key so insights can be area-specific.
+- Data pipeline and storage
+  - Ingest → preprocess → synthetic → fairness modules under `src/pipeline/` producing CSVs in `data/<CITY>/raw/` and `data/<CITY>/processed/`.
+  - Local environment treats `data/<CITY>/{raw,processed}` as canonical and can load processed outputs into a local PostgreSQL instance.
+  - Render environment uses the same schema against Render-managed PostgreSQL and stores raw datasets in AWS S3 bucket `susps-raw-data` (region `eu-north-1`), kept in sync with local via `src.pipeline.s3_sync`.
 - Tooling and CI
-  - Ruff, Black, Mypy (local + CI); pre-commit hooks (Ruff/Black/Mypy)
-  - GitHub Actions runs lint, format check, typecheck, and tests with coverage
-  - `pytest.ini` added to set `pythonpath = .` and default asyncio loop scope
-  - Replaced Starlette's deprecated WSGIMiddleware with `a2wsgi.WSGIMiddleware` to remove warnings
-  - WARP.md created and updated with common commands and architecture overview
+  - Ruff, Black, Mypy (local + CI); pre-commit hooks (Ruff/Black/Mypy).
+  - GitHub Actions runs lint, format check, typecheck, and tests with coverage.
+  - `pytest.ini` added to set `pythonpath = .` and default asyncio loop scope.
+  - Replaced Starlette's deprecated WSGIMiddleware with `a2wsgi.WSGIMiddleware` to remove warnings.
+  - WARP.md created and updated with common commands, environment parity, and architecture overview.
 
 ## 2) What remains (near-term)
 
-- Data/UI integration
-  - Decide UI strategy: keep Render (no-DB) and Docker (DB) dashboards separate (recommended) or add a third "DB" toggle in Render.
-  - If adding DB toggle: wire charts to `/energy/summary` and `/traffic/summary` when available; fallback to demo/API gracefully.
-  - Confirm `DEFAULT_DATA_SOURCE` docs and behavior; add simple tests for `/config` GET/POST.
+- Frontend: complete area-driven behavior
+  - Extend core endpoints (`/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary`) to accept an `area_id` (or similar) and filter results accordingly.
+  - Update Dash callbacks to pass the selected `area-select` value through to these endpoints and clearly indicate which area the charts and advisory refer to.
+  - Implement hotspot choropleth maps consuming `/hotspots/areas` and `/hotspots/areas/forecast`, joined with ward/zone GeoJSON.
+  - Ensure that when no area is selected, each page shows only descriptive content and no numeric results beyond placeholders.
 - Models + pipeline integration
-  - Growth: implement `predict_from_processed` usage in API when artifacts exist; calibrate base population/rates from `data/processed/worldpop_features.csv`.
-  - Energy: expose `summary_from_processed` via an endpoint (e.g., `/energy/sector-summary`) and add a matching chart.
-  - Traffic: expose `daily_profile_from_processed` via an endpoint (e.g., `/traffic/hourly`) and add a matching chart.
-  - Add unit tests for these model readers against temp processed artifacts.
+  - Growth: continue to rely on processed and census data (`growth_forecast_city.csv` etc.) for `/growth`; optionally surface per-area growth allocations derived from worldpop/socioeconomic features.
+  - Energy: optionally expose sector-level summary via an endpoint (e.g., `/energy/sector-summary`) if added, and pair it with a dedicated chart.
+  - Traffic: optionally expose an hourly profile endpoint (e.g., `/traffic/hourly`) if needed for more granular visuals.
+  - Add or extend unit tests for these model readers and new endpoints.
 - DB/E2E workflow
-  - Optional CI job: spin up Postgres service, run migrations/seed, and run the DB summary tests.
-  - Ensure seed scripts are referenced in docs (already present) and remain up to date.
+  - Optional CI job: spin up Postgres service, apply schema (`src/backend/db/susps_schema_dump.sql` or migrations), seed minimal data, and run DB-backed endpoint tests.
+  - Ensure any seed or bootstrap scripts are referenced in docs and remain up to date.
 - Developer experience
-  - Starlette warning: optionally add `python-multipart` to requirements if form parsing or file uploads are planned; otherwise, suppress the warning in tests.
   - Keep pre-commit hooks (Ruff, Black, Mypy) enabled and documented.
+  - Consider adding `python-multipart` only if file uploads or form parsing are introduced; otherwise keep dependencies minimal.
 - Documentation
-  - Keep WARP.md and README in sync with UI toggle behavior, new endpoints, and any CI/E2E changes.
+  - Keep WARP.md, README, and this status document in sync with the area-driven frontend, new endpoints (simulation, time-series, hotspots), and the local↔Render parity workflow.
 
 ## 3) End-state (target architecture)
 
@@ -76,16 +99,18 @@ This document summarizes the current state of the SUSPS repository: what’s don
 
 ## 4) How to proceed
 
-- For Render-only features
-  - Implement new endpoints in `src/backend/api.py` and corresponding charts in `src/webapp/app.py`
-  - Use `DEFAULT_DATA_SOURCE` to set initial data source
-- For DB-backed features
-  - Use `docker compose up --build` and `scripts/seed-db.*` to prepare data
-  - Implement analytics endpoints under `backend/app/api/routes.py`
-  - Update DB-backed Dash charts under `backend/app/dash_app/app.py`
-- For model and pipeline integration
-  - Extend `src/models/*` to parse `data/processed/*` outputs
-  - Add new endpoints or reuse existing ones to expose model outputs to the UI
+- Frontend (Dash)
+  - Treat `src/webapp/app.py` as the single source for the UI; keep it area-driven (no Demo/API toggle) and ensure new charts respect `area-select`.
+  - When adding new visualizations (e.g., hotspots, simulation outputs), wire them to the existing FastAPI endpoints and gate them on area selection.
+- Backend (FastAPI)
+  - Add or refine endpoints under `src/backend/api.py` to support per-area filtering and any additional summaries needed by the UI.
+  - Keep all models and external integrations on free tiers (Hugging Face, OpenWeather, Open-Meteo, TomTom, OpenAQ, etc.), with deterministic fallbacks.
+- DB-backed features
+  - Use local PostgreSQL or Render-managed Postgres with the schema in `src/backend/db/susps_schema_dump.sql` for DB-enabled flows.
+  - Add DB tests only where they materially improve confidence (e.g., `/areas`, `/processed_data`, `/simulation_inputs`).
+- Models and pipeline
+  - Extend or adjust `src/models/*` to consume processed outputs and feed endpoints cleanly.
+  - Keep pipeline steps deterministic and documented so that local and Render can be reproduced reliably.
 
 ## Roadmap to completion
 
@@ -94,53 +119,47 @@ Milestone M1 — Clean baseline (DONE)
 - Dash mounting via `a2wsgi.WSGIMiddleware` (no deprecation warnings).
 - `pytest.ini` in place; WARP.md/README updated.
 
-Milestone M2 — Demo/API feature completeness (no-DB path)
-- Backend (DONE): `/growth` prefers precomputed forecast; `/energy/summary` and `/traffic/summary` implemented; processed-first behavior across endpoints with graceful fallbacks.
-- Pipeline (DONE): API-first ingest (OpenWeather/OpenAQ/TomTom) with fallbacks; preprocess produces environment/energy/traffic/AQ features; census + growth forecast precompute.
-- UI (PENDING): add charts for Energy sector summary and hourly Traffic profile; ensure Data Source toggle updates all charts consistently.
-- Tests (PENDING): add API route tests for new endpoints; add unit tests for growth forecast generator.
-- Docs (PENDING): ensure README/WARP.md examples include new endpoints and provider env guidance.
+Milestone M2 — Backend feature completeness and environment parity (MOSTLY DONE)
+- Backend: `/growth` prefers precomputed forecast; `/energy/summary` and `/traffic/summary` implemented; processed-first behavior across endpoints with graceful fallbacks.
+- Added SIMULATE (`/simulate/run`), time-series forecasting (`/ts/forecast`), hotspot endpoints (`/hotspots/areas`, `/hotspots/areas/forecast`), and DB metadata endpoints (`/areas`, `/processed_data`, `/simulation_inputs`) backed by a portable schema (`src/backend/db/susps_schema_dump.sql`).
+- Pipeline: API-first ingest (OpenWeather/OpenAQ/TomTom) with fallbacks; preprocess produces environment/energy/traffic/AQ features, census-based growth forecasts, and hotspot CSVs.
+- Environment parity: local PostgreSQL + `data/<CITY>/{raw,processed}` vs Render PostgreSQL + S3 `susps-raw-data`, kept aligned via `src.pipeline.s3_sync` and documented bootstrap steps.
 
-Milestone M3 — Ward-level and spatial features (Nairobi)
-- Add Nairobi ward boundaries; compute zonal stats for WorldPop/land cover → ward-level features.
-- Allocate growth forecasts to wards using pop_share; prepare ward choropleth map for UI.
-- Derive OSM network metrics (road_km by class, intersection density) to enrich traffic.
+Milestone M3 — Area-driven frontend & hotspot maps (IN PROGRESS)
+- Completed: removed Demo/API toggle from Dash and introduced an `area-select` dropdown gating all charts and advisory.
+- Pending:
+  - Extend `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary` to accept `area_id` (or equivalent) and filter appropriately.
+  - Update Dash callbacks to pass the selected area into these endpoints and reflect the selected area clearly in the UI.
+  - Implement hotspot choropleths using `/hotspots/areas` and `/hotspots/areas/forecast` joined with ward/zone GeoJSON.
+  - Ensure that when no area is selected, each page shows only descriptive content and placeholder charts.
 
-Milestone M4 — Reliability and ops
-- Add caching and backoff for external API calls; scheduled ingestion (hourly/daily) for weather/AQ/traffic.
-- Add basic metrics/logging; keep `/health` stable; document operational playbook.
-- Expand fairness checks where applicable (coverage across wards).
+Milestone M4 — UX polish, simulation & forecasting surfaces
+- Add simple UI for SIMULATE runs (e.g., sliders/inputs on Growth/Energy/Traffic pages calling `/simulate/run`).
+- Optionally expose `/ts/forecast` in charts for extended forecast scenarios.
+- Add help tooltips and page descriptions explaining each page's purpose and how area selection affects data.
 
-Milestone M5 — DB-backed experience and E2E (optional)
-- Ensure `docker compose up --build` + seed scripts produce data; DB-backed `/energy/summary` and `/traffic/summary` reflect seeded content.
-- UI (DB dashboard under `backend/`): verify charts render and document usage.
-- CI (optional separate job): service container Postgres, run migrations/seed, then run DB summary tests.
-
-Milestone M4 — Reliability and ops
-- Add structured logging and error handling for API endpoints; timeouts on outbound calls used by UI when source=API.
-- Define health/readiness endpoints if needed; keep `/health` stable.
-- Security baseline: CORS review, basic rate-limiting notes (if required), minimal headers.
-- Coverage target: add/adjust tests to meet an agreed baseline (e.g., 70–80%).
-
-Milestone M5 — Data store alignment (optional, per preference)
-- Evaluate TiDB compatibility for transactional workloads while keeping geospatial via PostGIS or an external geoservice; confirm open-source path without credit card signups.
-- Define an abstraction layer for DB access to allow incremental migration or dual support.
-- Produce a migration plan (scoped; only if adoption is desired).
+Milestone M5 — Reliability, tests, and documentation (FINAL)
+- Add tests for new endpoints (per-area series, hotspots, simulation/time-series) and, where feasible, basic Dash integration tests.
+- Finalize environment-parity checks and document a reproducible path to show local vs Render matching responses for a given city and area.
+- Clean up legacy pieces (`/config` + `_DEFAULT_SOURCE`), and optionally remove any remaining demo semantics at the API level if they are no longer desired.
+- Keep WARP.md, README, and system_status.md in sync with the final behavior.
 
 Exit criteria (definition of done)
-- Render app: toggle works; growth/energy/traffic plus new sector/hourly endpoints power charts; docs reflect behavior.
+- Render app: `area-select` works; growth/energy/traffic plus hotspot and summary endpoints power charts; docs reflect the area-driven, no-toggle behavior.
+- Environment parity: for a given CITY and synced datasets (via `s3_sync`), key API responses (`/growth`, `/energy`, `/traffic`, summaries, hotspots) and advisory outputs are consistent between local and Render within expected tolerances (timestamps, ordering).
 - DB app: endpoints and charts display seeded data; optional CI E2E job green.
 - Tooling: pre-commit and CI stay green; warnings are either addressed or documented.
 
 ## 5) Acceptance criteria (baseline)
 
 - Render app
-  - `/health` returns OK; `/dash/` renders charts with toggle functioning
-  - `/growth`, `/energy`, `/traffic` return structured demo data
-- Docker app
-  - Migrations apply; seed scripts succeed; `/areas` non-empty; `/energy/summary` and `/traffic/summary` return items
+  - `/health` returns OK; `/dash/` renders pages with the sidebar `area-select` dropdown.
+  - With no area selected, pages show descriptive content and placeholder charts only.
+  - After selecting an area, `/growth`, `/energy`, `/traffic`, summaries, hotspots, and advisory endpoints return structured data and charts/advisory render without errors.
+- Docker/local DB app (if used)
+  - Migrations or schema application succeeds; seed scripts (if any) succeed; `/areas` is non-empty; `/energy/summary` and `/traffic/summary` return items where data is present.
 - CI
-  - All checks pass (Ruff, Black, Mypy with package mode, unit tests)
+  - All checks pass (Ruff, Black, Mypy with package mode, unit tests).
 
 ## 6) Notes
 

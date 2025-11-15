@@ -1,15 +1,8 @@
-from dash import Dash, html, dcc, Input, Output, State
+from dash import Dash, html, dcc, Input, Output
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import os
 import requests
-
-from src.models.growth import predict_growth as _predict_growth
-from src.models.energy import (
-    daily_profile as _energy_profile,
-    summary_from_processed as _energy_summary_from_processed,
-)
-from src.models.traffic import daily_profile as _traffic_profile
 
 
 def _placeholder_map(el_id: str, title: str) -> html.Div:
@@ -49,60 +42,21 @@ def _placeholder_table(title: str) -> html.Div:
     return html.Div([html.Div(title, className="text-muted mb-2"), table])
 
 
+def _empty_fig(title: str) -> go.Figure:
+    fig = go.Figure()
+    fig.update_layout(title_text=title)
+    return fig
+
+
 def _make_figures():
-    """Return initial placeholder figures for readiness, growth, energy, traffic."""
-    # Readiness chart (placeholder progress)
-    modules = ["Growth", "Energy", "Traffic"]
-    readiness = [10, 5, 2]
-    fig_readiness = go.Figure(
-        data=[go.Bar(x=modules, y=readiness, marker_color="#1f77b4")],
-        layout=go.Layout(title_text="Initial Module Readiness (placeholder)"),
-    )
+    """Return initial empty figures for readiness, growth, energy, traffic.
 
-    # Growth (demo)
-    growth_years = list(range(2025, 2031))
-    growth_values = [int(800_000 * (1.03 ** (i))) for i in range(len(growth_years))]
-    fig_growth = go.Figure(
-        data=[
-            go.Scatter(
-                x=growth_years, y=growth_values, mode="lines+markers", name="predicted"
-            )
-        ],
-        layout=go.Layout(title_text="Demo: Growth (predicted population)"),
-    )
-
-    # Energy (demo)
-    hours = list(range(24))
-    energy_curve = [
-        5.0 if h < 6 else 8.0 if h < 9 else 6.5 if h < 16 else 9.5 if h < 20 else 6.0
-        for h in hours
-    ]
-    fig_energy = go.Figure(
-        data=[
-            go.Scatter(
-                x=hours, y=energy_curve, mode="lines+markers", name="demand (MWh)"
-            )
-        ],
-        layout=go.Layout(title_text="Demo: Energy (daily profile)"),
-    )
-
-    # Traffic (demo)
-    traffic_curve = [
-        (
-            150
-            if h < 6
-            else (
-                850 if h in (7, 8) else 400 if h < 16 else 900 if h in (17, 18) else 200
-            )
-        )
-        for h in hours
-    ]
-    fig_traffic = go.Figure(
-        data=[
-            go.Scatter(x=hours, y=traffic_curve, mode="lines+markers", name="volume")
-        ],
-        layout=go.Layout(title_text="Demo: Traffic (daily profile)"),
-    )
+    These are placeholders; real data is only loaded after an area is selected.
+    """
+    fig_readiness = _empty_fig("Module readiness")
+    fig_growth = _empty_fig("Growth (select an area)")
+    fig_energy = _empty_fig("Energy (select an area)")
+    fig_traffic = _empty_fig("Traffic (select an area)")
     return fig_readiness, fig_growth, fig_energy, fig_traffic
 
 
@@ -128,15 +82,12 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
             [
                 html.H2("SUSPS", className="display-6 mb-3"),
                 html.Hr(),
-                html.P("Data source", className="text-secondary small"),
-                dcc.RadioItems(
-                    id="data-source",
-                    options=[
-                        {"label": "API (processed/DB)", "value": "api"},
-                        {"label": "Demo (fallback)", "value": "demo"},
-                    ],
-                    value=os.getenv("DEFAULT_DATA_SOURCE", "api"),
-                    style={"marginBottom": "0.5rem"},
+                html.P("Select area", className="text-secondary small"),
+                dcc.Dropdown(
+                    id="area-select",
+                    options=[],
+                    placeholder="Search or select area...",
+                    style={"marginBottom": "0.75rem"},
                 ),
                 html.Hr(),
                 dbc.Nav(
@@ -336,18 +287,54 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
         active_traffic = (pathname or "").startswith(f"{prefix}traffic")
         return content, active_dashboard, active_growth, active_energy, active_traffic
 
-    # Figures update based on data source toggle
+    # Load area options from /areas for the sidebar dropdown
+    @app.callback(
+        Output("area-select", "options"),
+        Input("url", "pathname"),
+        prevent_initial_call=False,
+    )
+    def _load_area_options(_pathname: str):
+        base = os.getenv("API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+        try:
+            r = requests.get(f"{base}/areas", timeout=8)
+            r.raise_for_status()
+            items = r.json().get("items", [])
+        except Exception:
+            items = []
+        options = [
+            {
+                "label": f"{it.get('name', 'Area')} ({it.get('area_type', '')})",
+                "value": it.get("area_id") or it.get("id"),
+            }
+            for it in items
+        ]
+        return options
+
+    # Figures update based on selected area (no demo toggle)
     @app.callback(
         Output("growth-graph", "figure"),
         Output("energy-graph", "figure"),
         Output("traffic-graph", "figure"),
         Output("energy-summary-graph", "figure"),
         Output("traffic-summary-graph", "figure"),
-        Input("data-source", "value"),
-        State("url", "pathname"),
+        Input("area-select", "value"),
     )
-    def _update_figs(source: str, _pathname: str):
-        base = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
+    def _update_figs(area_id):
+        base = os.getenv("API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+
+        def _fig_growth(items):
+            if not items:
+                return _empty_fig("Growth (no data for selected area)")
+            years = [it.get("year") for it in items]
+            values = [it.get("predicted_population") for it in items]
+            return go.Figure(
+                data=[
+                    go.Scatter(
+                        x=years, y=values, mode="lines+markers", name="predicted"
+                    )
+                ],
+                layout=go.Layout(title_text="Growth (predicted population)"),
+            )
 
         def _fig_growth(items):
             years = [it["year"] for it in items]
@@ -447,7 +434,7 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                 fig.add_trace(go.Bar(x=x, y=act, name="actual"))
                 fig.update_layout(barmode="group", title_text="Traffic summary by area")
                 return fig
-            # Processed/demo shape: hourly averages
+            # Processed shape: hourly averages
             hours = [int(it.get("hour", it.get("hourly", 0))) for it in items]
             vals = [
                 float(it.get("avg_veh_per_hour", it.get("volume", 0))) for it in items
@@ -457,43 +444,53 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
                 layout=go.Layout(title_text="Traffic average hourly volume"),
             )
 
-        if source == "api":
-            try:
-                g = requests.get(f"{base}/growth", timeout=8).json().get("items", [])
-                e = requests.get(f"{base}/energy", timeout=8).json().get("items", [])
-                t = requests.get(f"{base}/traffic", timeout=8).json().get("items", [])
-                es = (
-                    requests.get(f"{base}/energy/summary", timeout=8)
-                    .json()
-                    .get("items", [])
-                )
-                ts = (
-                    requests.get(f"{base}/traffic/summary", timeout=8)
-                    .json()
-                    .get("items", [])
-                )
-                return (
-                    _fig_growth(g),
-                    _fig_energy(e),
-                    _fig_traffic(t),
-                    _fig_energy_summary(es),
-                    _fig_traffic_hourly(ts),
-                )
-            except Exception:
-                pass  # fall back to demo
+        # No area selected: keep empty figures with descriptive titles
+        if area_id is None:
+            return (
+                _empty_fig("Growth (select an area)"),
+                _empty_fig("Energy (select an area)"),
+                _empty_fig("Traffic (select an area)"),
+                _empty_fig("Energy summary (select an area)"),
+                _empty_fig("Traffic summary (select an area)"),
+            )
 
-        # demo fallback
-        g = _predict_growth()
-        e = _energy_profile()
-        t = _traffic_profile()
-        es = _energy_summary_from_processed()
-        if not es:
-            es = [
-                {"sector": "household", "demand_mwh": 250_000, "pct": 0.5},
-                {"sector": "commercial", "demand_mwh": 180_000, "pct": 0.3},
-                {"sector": "industrial", "demand_mwh": 520_000, "pct": 0.2},
-            ]
-        ts = [{"hour": it["hour"], "avg_veh_per_hour": it["volume"]} for it in t]
+        # Load data from API only (no demo fallback)
+        params = f"?area_id={area_id}" if area_id is not None else ""
+        try:
+            g = (
+                requests.get(f"{base}/growth{params}", timeout=8)
+                .json()
+                .get("items", [])
+            )
+            e = (
+                requests.get(f"{base}/energy{params}", timeout=8)
+                .json()
+                .get("items", [])
+            )
+            t = (
+                requests.get(f"{base}/traffic{params}", timeout=8)
+                .json()
+                .get("items", [])
+            )
+            es = (
+                requests.get(f"{base}/energy/summary{params}", timeout=8)
+                .json()
+                .get("items", [])
+            )
+            ts = (
+                requests.get(f"{base}/traffic/summary{params}", timeout=8)
+                .json()
+                .get("items", [])
+            )
+        except Exception:
+            return (
+                _empty_fig("Growth (error loading data)"),
+                _empty_fig("Energy (error loading data)"),
+                _empty_fig("Traffic (error loading data)"),
+                _empty_fig("Energy summary (error loading data)"),
+                _empty_fig("Traffic summary (error loading data)"),
+            )
+
         return (
             _fig_growth(g),
             _fig_energy(e),
@@ -502,14 +499,27 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
             _fig_traffic_hourly(ts),
         )
 
-    # Insights updater
+    # Insights updater (area-gated)
     @app.callback(
         Output("insights-panel", "children"),
-        Input("data-source", "value"),
+        Input("area-select", "value"),
         Input("url", "pathname"),
         prevent_initial_call=False,
     )
-    def _update_insights(source: str, pathname: str):
+    def _update_insights(area_id, pathname: str):
+        # No area selected: show descriptive text only
+        if area_id is None:
+            text = (
+                "Select an area from the sidebar to load data and generate "
+                "AI advisory for this page. The advisory engine summarises "
+                "recent growth, energy, and traffic patterns for the chosen "
+                "area using the available datasets, APIs, and models."
+            )
+            return html.Div(
+                [
+                    dcc.Markdown(text),
+                ]
+            )
         base = os.getenv("API_BASE_URL", "").strip()
         alt = os.getenv("API_BASE_URL_ALT", "").strip()
         # Build candidate list: env bases then common locals
@@ -537,7 +547,12 @@ def create_dash_app(requests_pathname_prefix: str = "/") -> Dash:
             except Exception:
                 tmo = 30
             try:
-                r = requests.get(f"{api_base}/advisory/{scope}", timeout=max(15, tmo))
+                params = {"zone_id": str(area_id)} if area_id is not None else None
+                r = requests.get(
+                    f"{api_base}/advisory/{scope}",
+                    params=params,
+                    timeout=max(15, tmo),
+                )
                 r.raise_for_status()
                 return r.json()  # type: ignore[no-any-return]
             except Exception:
