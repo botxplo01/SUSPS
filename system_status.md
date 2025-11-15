@@ -11,7 +11,8 @@ This document summarizes the current state of the SUSPS repository: what’s don
 - Pipeline and data layout: API-first ingestion writes to `data/<CITY>/raw/` (OpenWeather default, Open‑Meteo optional; OpenAQ; TomTom). Preprocess writes to `data/<CITY>/processed/` (environment_features, energy_features, traffic_features, air_quality_daily, hotspot CSVs). Census and precomputed growth forecast (`growth_forecast_city.csv`) plus Urban_Growth features remain integrated.
 - Storage and environments: Local runs with a local PostgreSQL instance plus file-based data under `data/<CITY>/{raw,processed}`; Render runs against managed PostgreSQL and AWS S3 bucket `susps-raw-data` (region `eu-north-1`) holding the same raw datasets. `src/pipeline.s3_sync` keeps local `data/<CITY>/raw/` and S3 in sync so results match between local and Render.
 - Frontend (Dash): Sidebar uses an `area-select` dropdown populated from `/areas`; there is no longer a Demo/API data-source toggle. On initial load (no area selected) each page shows descriptive text and placeholder charts only; charts and advisory are populated only once an area is chosen, and the advisory engine now receives the selected area (`zone_id`) so guidance is explicitly scoped.
-- Docs: WARP.md and README document the local+Render parity story (Postgres + S3), backend capabilities (simulation, time-series, hotspots), and the new area-driven frontend behavior; this status doc reflects that.
+- Frontend (React + Tailwind, `src/frontend`): New Vite+React+TypeScript+Tailwind SPA scaffold with Dashboard, Urban Growth, Energy, and Traffic pages; area selection is wired via a sidebar backed by `/areas`, REAL-mode charts consume `/growth`, `/energy`, `/traffic`, and advisory content is loaded via `/advisory/{scope}`. SIMULATE behavior and hotspot maps are planned next.
+- Docs: WARP.md and README document the local+Render parity story (Postgres + S3), backend capabilities (simulation, time-series, hotspots), and both the legacy Dash and new React area-driven frontends; this status doc reflects that.
 
 ## 1) What’s implemented
 
@@ -58,11 +59,14 @@ This document summarizes the current state of the SUSPS repository: what’s don
 
 ## 2) What remains (near-term)
 
-- Frontend: complete area-driven behavior
+- Frontend: complete React migration and area-driven behavior
+  - Wire SIMULATE mode in the React UI to `/simulate/run` (and optionally `/ts/forecast`) on the Urban Growth, Energy, and Traffic pages.
+  - Replace the `Map` placeholder in React with a real OSM-based map component (e.g., MapLibre/Leaflet) and overlay `/hotspots/areas` and `/hotspots/areas/forecast` joined with ward/zone GeoJSON.
+  - Optionally surface additional summary views on the React Dashboard by aggregating growth/energy/traffic series or using `/energy/summary` and `/traffic/summary` once area filtering is in place.
+  - Ensure that when no area is selected in React, each page shows only descriptive content and placeholder visuals, matching the existing Dash behavior.
+- Backend/frontend integration
   - Extend core endpoints (`/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary`) to accept an `area_id` (or similar) and filter results accordingly.
-  - Update Dash callbacks to pass the selected `area-select` value through to these endpoints and clearly indicate which area the charts and advisory refer to.
-  - Implement hotspot choropleth maps consuming `/hotspots/areas` and `/hotspots/areas/forecast`, joined with ward/zone GeoJSON.
-  - Ensure that when no area is selected, each page shows only descriptive content and no numeric results beyond placeholders.
+  - Ensure both Dash and React clients pass the selected area into these endpoints and clearly indicate which area the charts and advisory refer to.
 - Models + pipeline integration
   - Growth: continue to rely on processed and census data (`growth_forecast_city.csv` etc.) for `/growth`; optionally surface per-area growth allocations derived from worldpop/socioeconomic features.
   - Energy: optionally expose sector-level summary via an endpoint (e.g., `/energy/sector-summary`) if added, and pair it with a dedicated chart.
@@ -126,15 +130,17 @@ Milestone M2 — Backend feature completeness and environment parity (MOSTLY DON
 - Environment parity: local PostgreSQL + `data/<CITY>/{raw,processed}` vs Render PostgreSQL + S3 `susps-raw-data`, kept aligned via `src.pipeline.s3_sync` and documented bootstrap steps.
 
 Milestone M3 — Area-driven frontend & hotspot maps (IN PROGRESS)
-- Completed: removed Demo/API toggle from Dash and introduced an `area-select` dropdown gating all charts and advisory.
+- Completed:
+  - Removed Demo/API toggle from Dash and introduced an `area-select` dropdown gating all charts and advisory.
+  - Scaffolded the new React+Tailwind frontend with Dashboard, Urban Growth, Energy, and Traffic pages, and wired area selection via `/areas` plus REAL-mode charts and advisory.
 - Pending:
   - Extend `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary` to accept `area_id` (or equivalent) and filter appropriately.
-  - Update Dash callbacks to pass the selected area into these endpoints and reflect the selected area clearly in the UI.
-  - Implement hotspot choropleths using `/hotspots/areas` and `/hotspots/areas/forecast` joined with ward/zone GeoJSON.
-  - Ensure that when no area is selected, each page shows only descriptive content and placeholder charts.
+  - Ensure both Dash and React pass the selected area into these endpoints and reflect the selected area clearly in the UI.
+  - Implement hotspot choropleths using `/hotspots/areas` and `/hotspots/areas/forecast` joined with ward/zone GeoJSON in the new React UI (and optionally Dash).
+  - Ensure that when no area is selected, each page in both frontends shows only descriptive content and placeholder charts/maps.
 
 Milestone M4 — UX polish, simulation & forecasting surfaces
-- Add simple UI for SIMULATE runs (e.g., sliders/inputs on Growth/Energy/Traffic pages calling `/simulate/run`).
+- Add simple UI for SIMULATE runs in React (e.g., sliders/inputs on Growth/Energy/Traffic pages calling `/simulate/run`).
 - Optionally expose `/ts/forecast` in charts for extended forecast scenarios.
 - Add help tooltips and page descriptions explaining each page's purpose and how area selection affects data.
 

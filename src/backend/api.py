@@ -925,13 +925,39 @@ def advisory(scope: str, zone_id: Optional[str] = Query(None)):
 
 
 @app.get("/advisory_batch")
-def advisory_batch(scopes: str = Query("dashboard,growth,energy,traffic")):
-    """
-    Batch insights for multiple scopes in one call. Example: /advisory_batch?scopes=energy,traffic
+def advisory_batch(
+    scopes: str = Query("dashboard,growth,energy,traffic"),
+    zone_ids: Optional[str] = Query(
+        None,
+        description=(
+            "Optional comma-separated list of zone_ids to align with scopes. "
+            "If a single value is provided, it is used for all scopes."
+        ),
+    ),
+):
+    """Batch insights for multiple scopes in one call.
+
+    Example:
+        /advisory_batch?scopes=energy,traffic&zone_ids=ward-1,ward-2
+
+    If `zone_ids` contains a single value, it will be used for all scopes.
     """
     wanted = [s.strip().lower() for s in (scopes or "").split(",") if s.strip()]
     valid = {"dashboard", "growth", "energy", "traffic"}
     scopes_list = [s for s in wanted if s in valid] or ["dashboard"]
+
+    # Align zone_ids (if provided) with scopes_list
+    zone_id_list: list[Optional[str]] = [None] * len(scopes_list)
+    if zone_ids is not None:
+        raw = [z.strip() for z in zone_ids.split(",")]
+        # Single zone_id: reuse for all scopes
+        if len(raw) == 1:
+            zid = raw[0] or None
+            zone_id_list = [zid] * len(scopes_list)
+        else:
+            for idx, s in enumerate(scopes_list):
+                if idx < len(raw) and raw[idx]:
+                    zone_id_list[idx] = raw[idx]
 
     # Preload bundles once and reuse
     try:
@@ -943,7 +969,8 @@ def advisory_batch(scopes: str = Query("dashboard,growth,energy,traffic")):
 
     from concurrent.futures import ThreadPoolExecutor
 
-    def _for_scope(s: str):
+    def _for_scope(args: tuple[str, Optional[str]]):
+        s, zid = args
         b = {}
         if s in ("dashboard", "growth"):
             b["growth"] = g
@@ -951,14 +978,14 @@ def advisory_batch(scopes: str = Query("dashboard,growth,energy,traffic")):
             b["energy"] = e
         if s in ("dashboard", "traffic"):
             b["traffic"] = t
-        # advisory_batch doesn't currently have zone filtering per scope,
-        # but we could extend it in the future
-        return s, generate_insights_from_scope(s, b, zone_id=None)
+        res = generate_insights_from_scope(s, b, zone_id=zid)
+        return s, zid, res
 
-    results = {}
+    results: Dict[str, Any] = {}
     with ThreadPoolExecutor(max_workers=min(3, len(scopes_list))) as ex:
-        for s, res in ex.map(_for_scope, scopes_list):
+        for s, zid, res in ex.map(_for_scope, zip(scopes_list, zone_id_list)):
             results[s] = {
+                "zone_id": zid,
                 "insights": res.get("text", ""),
                 "model": res.get("model"),
                 "cached": res.get("cached", False),

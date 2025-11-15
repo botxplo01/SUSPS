@@ -5,3 +5,8 @@ export interface Area {
   name: string;
   type?: string;
 }
+
+export interface ChartPoint {
+  x: number;
+  y: number;
+}

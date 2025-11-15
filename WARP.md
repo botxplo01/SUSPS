@@ -22,6 +22,11 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - Start: `uvicorn src.backend.api:app --reload`
   - Open: http://127.0.0.1:8000/dash/ (health: http://127.0.0.1:8000/health)
 
+- Run the React frontend (Vite + React + Tailwind)
+  - From repo root: `cd src/frontend`
+  - Install deps (first time): `npm install`
+  - Start dev server: `npm run dev` (defaults to `http://localhost:5173`)
+
 - Tests (pytest)
   - All tests: `pytest -q`
   - With coverage: `pytest --cov=src --cov=backend --cov-report=term-missing -q`
@@ -63,9 +68,10 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 ### Repository structure (streamlined)
 - src/
   - backend/: unified FastAPI app (primary API for local + Render) and advisory module
-  - webapp/: single Dash UI used by both unified API and Docker backend
+  - webapp/: legacy Dash UI used by the unified API (to be superseded by the new React frontend).
+  - frontend/: Vite + React + Tailwind SPA (`src/frontend`) providing the modern SUSPS UI.
   - pipeline/: ingest, preprocess, synthetic, and S3 sync utilities
-  - models/: deterministic helpers and lightweight stubs (growth/energy/traffic simulation, time-series, etc.) used by the backend; the Dash UI now relies only on API endpoints rather than local demo stubs.
+  - models/: deterministic helpers and lightweight stubs (growth/energy/traffic simulation, time-series, etc.) used by the backend; the UI now relies only on API endpoints rather than local demo stubs.
 - backend/: removed (Docker and container-only backend are not used for the final-year project)
 - tests/: unit and e2e tests
 - data/: city-scoped outputs under `data/<CITY>/{raw,processed}` (default CITY=Nairobi)
@@ -116,7 +122,8 @@ SUSPS is organized around a lightweight FastAPI app that mounts a Dash UI, plus 
 
 Key URLs
 - Health: `/health`
-- Dashboard: `/dash/`
+- Dash (legacy UI): `/dash/`
+- React frontend (local dev): `http://localhost:5173` (Vite dev server; see `src/frontend`)
 - Core data: `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary`, `/config` (GET/POST)
 - Areas & metadata: `/areas`, `/processed_data`, `/simulation_inputs`
 - Simulation & time-series: `/simulate/run`, `/simulation_inputs` (POST), `/ts/forecast`
@@ -186,6 +193,13 @@ Examples (API responses, truncated):
   - Reworked layout to use a sidebar `area-select` dropdown populated from `/areas`.
   - Removed the demo vs API data-source toggle; the UI now always calls the real API endpoints and only shows data once an area is selected, otherwise showing descriptive placeholders.
   - Advisory "Insights" panels are now gated on area selection and continue to use the Hugging Face-powered backend.
+
+- Frontend (React + Tailwind under `src/frontend`)
+  - Scaffolded a Vite+React+TypeScript+Tailwind SPA with pages for Dashboard, Urban Growth, Energy, and Traffic.
+  - Implemented an area-driven sidebar wired to `/areas` with live search, suggestions, and selection, and lifted `selectedArea` state into `App`.
+  - Implemented shared API helpers and hooks (`api.ts`, `useAdvisory`, `useGrowthSeries`, `useEnergySeries`, `useTrafficSeries`) to fetch REAL data series and advisory insights from the FastAPI backend.
+  - Implemented minimalist SVG-based `BarChart`, `LineChart`, and `Histogram` components (no gridlines) that display REAL growth/energy/traffic series once an area is selected.
+  - Added REAL vs SIMULATE mode toggles and a floating `ActionToggle` for Predict/Optimize/Simulate (currently switching UI modes; simulation API wiring is planned).
 
 - Environment parity
   - Confirmed the local vs Render story (local PostgreSQL + `data/<CITY>/{raw,processed}` vs Render PostgreSQL + S3 `susps-raw-data`) and S3 sync tooling as described below.
