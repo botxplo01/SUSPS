@@ -16,8 +16,11 @@ except Exception:
 # Project root = repo root (src/pipeline -> src -> root)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
-RAW_DIR = DATA_DIR / "raw"
-PROCESSED_DIR = DATA_DIR / "processed"
+# Optional city scoping: put data under data/<CITY>/{raw,processed}
+_CITY = os.getenv("DATA_CITY") or os.getenv("CITY_NAME") or "Nairobi"
+CITY_DIR = DATA_DIR / _CITY
+RAW_DIR = CITY_DIR / "raw"
+PROCESSED_DIR = CITY_DIR / "processed"
 
 
 def ensure_dirs() -> None:

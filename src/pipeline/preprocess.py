@@ -265,6 +265,222 @@ def preprocess_socioeconomic() -> Path:
     return out
 
 
+def preprocess_hotspots() -> Path:
+    """Compute simple area-level hotspots from processed features.
+
+    This is a deterministic, resource-efficient hotspot score built from
+    existing processed tables (worldpop_features and socioeconomic_features).
+    It does not require any external APIs or ML models and is suitable for
+    driving map overlays (by joining on admin_unit in a separate GeoJSON).
+
+    Output: hotspots_areas.csv with columns:
+      - admin_unit
+      - population
+      - pop_share
+      - income_norm
+      - employment_score
+      - hotspot_score (0..1, higher = more pressure/vulnerability)
+    """
+
+    config.ensure_dirs()
+    wp = config.PROCESSED_DIR / "worldpop_features.csv"
+    se = config.PROCESSED_DIR / "socioeconomic_features.csv"
+    if not wp.exists() or not se.exists():
+        raise FileNotFoundError(
+            "hotspot preprocessing requires worldpop_features.csv and "
+            "socioeconomic_features.csv; run preprocess_worldpop and "
+            "preprocess_socioeconomic first."
+        )
+
+    df_wp = pd.read_csv(wp)
+    df_se = pd.read_csv(se)
+
+    if "admin_unit" not in df_wp.columns:
+        raise ValueError("worldpop_features.csv must contain admin_unit column")
+    if "admin_unit" not in df_se.columns:
+        raise ValueError("socioeconomic_features.csv must contain admin_unit column")
+
+    df = df_wp.merge(df_se, on="admin_unit", how="left")
+
+    # Defaults for missing socio-economic values
+    if "income_norm" not in df.columns:
+        df["income_norm"] = 0.5
+    df["income_norm"] = df["income_norm"].fillna(0.5).clip(0.0, 1.0)
+
+    emp_score = df.get("employment_score")
+    if emp_score is None:
+        df["employment_score"] = 50.0
+    df["employment_score"] = df["employment_score"].fillna(50.0).clip(0.0, 100.0)
+    df["employment_norm"] = df["employment_score"] / 100.0
+
+    # Vulnerability: high when income is low and employment is low
+    df["vulnerability"] = (1.0 - df["income_norm"]) * (1.0 - df["employment_norm"])
+
+    # Base pressure from population share (already sums to ~1 across units)
+    df["pop_share"] = df["pop_share"].fillna(0.0)
+
+    # Combine into a hotspot score and normalize to 0..1
+    df["raw_score"] = df["pop_share"] * (0.5 + df["vulnerability"])
+    max_score = df["raw_score"].max() or 1.0
+    df["hotspot_score"] = (df["raw_score"] / max_score).clip(0.0, 1.0)
+
+    out_cols = [
+        c
+        for c in [
+            "admin_unit",
+            "population",
+            "pop_share",
+            "income_norm",
+            "employment_score",
+            "hotspot_score",
+        ]
+        if c in df.columns
+    ]
+    out_df = df[out_cols].copy() if out_cols else df.copy()
+    out_df = out_df.sort_values("hotspot_score", ascending=False)
+
+    out = config.PROCESSED_DIR / "hotspots_areas.csv"
+    out_df.to_csv(out, index=False)
+    return out
+
+
+def preprocess_hotspots_forecast(horizon_years: int = 6) -> Path:
+    """Forecast area-level hotspots over multiple years.
+
+    This uses deterministic, vulnerability-weighted growth at area level
+    combined with a city-level population forecast. It does not depend on
+    external APIs or paid models and is suitable for driving time-forward
+    hotspot maps.
+
+    Output: hotspots_areas_forecast.csv with columns including:
+      - year
+      - admin_unit
+      - population
+      - pop_share
+      - income_norm
+      - employment_score
+      - hotspot_score
+    """
+
+    config.ensure_dirs()
+    base_path = config.PROCESSED_DIR / "hotspots_areas.csv"
+    if not base_path.exists():
+        raise FileNotFoundError(
+            "hotspots_areas.csv not found; run preprocess_hotspots first"
+        )
+
+    df_base = pd.read_csv(base_path)
+    if "population" not in df_base.columns or "pop_share" not in df_base.columns:
+        raise ValueError(
+            "hotspots_areas.csv must contain population and pop_share columns"
+        )
+
+    # Reconstruct vulnerability used in preprocess_hotspots
+    if "income_norm" not in df_base.columns:
+        df_base["income_norm"] = 0.5
+    df_base["income_norm"] = df_base["income_norm"].fillna(0.5).clip(0.0, 1.0)
+
+    emp_score = df_base.get("employment_score")
+    if emp_score is None:
+        df_base["employment_score"] = 50.0
+    df_base["employment_score"] = (
+        df_base["employment_score"].fillna(50.0).clip(0.0, 100.0)
+    )
+    df_base["employment_norm"] = df_base["employment_score"] / 100.0
+
+    df_base["vulnerability"] = (1.0 - df_base["income_norm"]) * (
+        1.0 - df_base["employment_norm"]
+    )
+
+    # Derive vulnerability-normalized growth weights per area
+    vmin = float(df_base["vulnerability"].min())
+    vmax = float(df_base["vulnerability"].max())
+    if vmax > vmin:
+        v_norm = (df_base["vulnerability"] - vmin) / (vmax - vmin)
+    else:
+        v_norm = 0.5
+    beta = 0.4  # sensitivity of growth to vulnerability
+    df_base["growth_weight"] = (1.0 + beta * (v_norm - 0.5)).clip(lower=0.5)
+
+    base_total_pop = float(df_base["population"].sum()) or 1.0
+
+    # Obtain city-level population forecast
+    future_years: list[tuple[int, float]] = []
+    gfc_path = config.PROCESSED_DIR / "growth_forecast_city.csv"
+    if gfc_path.exists():
+        df_gfc = pd.read_csv(gfc_path).sort_values("year")
+        for _, r in df_gfc.iterrows():
+            year = int(r["year"])
+            val = float(r["predicted_population"])
+            if val > 0:
+                future_years.append((year, val))
+
+    if not future_years:
+        # Fallback: derive from census_trend if available
+        ct_path = config.PROCESSED_DIR / "census_trend.csv"
+        if ct_path.exists():
+            df_ct = pd.read_csv(ct_path).sort_values("year")
+            base_year = int(df_ct["year"].iloc[-1])
+            base_pop_ct = float(df_ct["total_population"].iloc[-1])
+            rate_series = df_ct.get("annual_rate")
+            if rate_series is None or rate_series.isna().all():
+                rate_series = df_ct["total_population"].pct_change()
+            recent = rate_series.dropna().tail(3)
+            r = float(recent.mean()) if len(recent) else 0.03
+            r = max(min(r, 0.08), -0.02)
+            pop_ct = base_pop_ct
+            for i in range(1, horizon_years + 1):
+                year = base_year + i
+                pop_ct = pop_ct * (1.0 + r)
+                future_years.append((year, pop_ct))
+        else:
+            # Last-resort: constant city population over horizon
+            base_year = 2025
+            for i in range(1, horizon_years + 1):
+                future_years.append((base_year + i, base_total_pop))
+
+    rows = []
+    # If growth_forecast_city.csv exists, preserve its horizon length
+    for step, (year, city_pop) in enumerate(future_years, start=1):
+        df_year = df_base.copy()
+        df_year["year"] = year
+        df_year["population_future_raw"] = df_year["population"].fillna(0.0) * (
+            df_year["growth_weight"] ** step
+        )
+        total_raw = float(df_year["population_future_raw"].sum()) or 1.0
+        scale = float(city_pop) / total_raw if total_raw > 0 else 1.0
+        df_year["population"] = df_year["population_future_raw"] * scale
+        df_year["pop_share"] = df_year["population"] / max(float(city_pop), 1.0)
+
+        # Recompute hotspot score for this year
+        df_year["raw_score"] = df_year["pop_share"] * (0.5 + df_year["vulnerability"])
+        max_score = float(df_year["raw_score"].max()) or 1.0
+        df_year["hotspot_score"] = (df_year["raw_score"] / max_score).clip(0.0, 1.0)
+
+        out_cols = [
+            c
+            for c in [
+                "year",
+                "admin_unit",
+                "population",
+                "pop_share",
+                "income_norm",
+                "employment_score",
+                "hotspot_score",
+            ]
+            if c in df_year.columns
+        ]
+        rows.append(df_year[out_cols])
+
+    if not rows:
+        raise ValueError("No forecast rows produced for hotspots")
+
+    out_df = pd.concat(rows, ignore_index=True)
+    out = config.PROCESSED_DIR / "hotspots_areas_forecast.csv"
+    out_df.to_csv(out, index=False)
+    return out
+
+
 def preprocess_urban_growth() -> tuple[Path, Path]:
     """Integrate Urban_Growth directory by producing a catalog and simple features.
 
@@ -420,6 +636,19 @@ def main() -> None:
         ug = None
 
     se = preprocess_socioeconomic()
+    # Hotspots depend on worldpop + socioeconomics; compute after both.
+    hs = None
+    try:
+        hs = preprocess_hotspots()
+    except Exception:
+        hs = None
+
+    hs_forecast = None
+    try:
+        hs_forecast = preprocess_hotspots_forecast()
+    except Exception:
+        hs_forecast = None
+
     print(f"Saved: {wp}")
     print(f"Saved: {en}")
     print(f"Saved: {tf}")
@@ -434,6 +663,10 @@ def main() -> None:
         print(f"Saved: {ug[0]}")
         print(f"Saved: {ug[1]}")
     print(f"Saved: {se}")
+    if hs:
+        print(f"Saved: {hs}")
+    if hs_forecast:
+        print(f"Saved: {hs_forecast}")
 
 
 if __name__ == "__main__":

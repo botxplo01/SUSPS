@@ -7,8 +7,12 @@ venv/
 .env
 .env.*
 
+# Envs
+.env aliased local.example
+.env aliased render.example
+
 # Data
-/data/raw/*
+/data/*
 !/data/raw/.gitkeep
 /data/processed/*
 !/data/processed/.gitkeep
@@ -20,7 +24,7 @@ data_sources_tree.md
 data_integration_guide_v4.md
 
 # Debugging
-errors.txt
+error_logs.txt
 
 # System Status
 ANALYSIS.md
@@ -31,8 +35,6 @@ ANALYSIS.md
 build/
 *.spec
 
-# Notebooks
-.ipynb_checkpoints/
 
 # OS
 .DS_Store

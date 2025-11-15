@@ -35,16 +35,10 @@ FALLBACK_PREFIX = (
 
 class HFTextGenerator:
     def __init__(self, model: Optional[str] = None, timeout: float = 12.0):
-        token = (
-            os.getenv("HUGGINGFACE_API_KEY")
-            or os.getenv("HF_API_TOKEN")
-            or os.getenv("HUGGINGFACEHUB_API_TOKEN")
-            or os.getenv("HF_API_KEY")  # user-provided name
-        )
+        token = os.getenv("HF_API_KEY")  # user-provided name
         self._token = token
         base_model = (
             model
-            or os.getenv("HF_MODEL")
             or os.getenv("HF_MODEL_NAME")  # user-provided name
             or _DEFAULT_MODELS[0]
         )
