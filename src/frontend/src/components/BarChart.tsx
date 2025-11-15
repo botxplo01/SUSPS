@@ -12,7 +12,14 @@ export function BarChart({ title, data }: BarChartProps) {
 
   return (
     <section className="rounded-xl bg-white p-4 shadow-sm">
-      {title && <h2 className="mb-2 text-sm font-semibold text-gray-800">{title}</h2>}
+      {title && (
+        <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-800">
+          <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-[#62d9c5]/10">
+            <span className="h-2.5 w-2.5 rounded-sm bg-[#62d9c5]" />
+          </span>
+          <span>{title}</span>
+        </h2>
+      )}
       {points.length === 0 ? (
         <div className="flex h-40 items-center justify-center text-xs text-gray-500">
           No data available.
@@ -34,7 +41,7 @@ export function BarChart({ title, data }: BarChartProps) {
                   width={barWidth}
                   height={height}
                   rx={1.5}
-                  className="fill-neutral-800"
+                  className="fill-[#62d9c5]"
                 />
               );
             })}

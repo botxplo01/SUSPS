@@ -3,9 +3,12 @@ interface AreaBadgeProps {
 }
 
 export function AreaBadge({ name }: AreaBadgeProps) {
-  return (
-    <span className="inline-flex items-center rounded-full bg-neutral-200 px-3 py-1 text-xs font-medium text-gray-800">
-      Area: {name}
-    </span>
-  );
+  const isSelected = name !== "No area selected";
+  const baseClasses =
+    "inline-flex items-center rounded-full px-3 py-1 text-xs font-medium";
+  const colorClasses = isSelected
+    ? "bg-[#d2f3e6] text-gray-800"
+    : "bg-neutral-200 text-gray-800";
+
+  return <span className={`${baseClasses} ${colorClasses}`}>Area: {name}</span>;
 }

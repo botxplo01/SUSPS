@@ -147,9 +147,10 @@ Key URLs
 - Traffic page
   - Uses `/traffic` and `/traffic/summary` for the selected city/area.
   - Same area gating and description-first behavior; advisory via `/advisory/traffic`.
-- Hotspot maps (planned UI)
+- Hotspot maps (React UI + OSM-based overlays)
   - Backend and pipeline are ready: `/hotspots/areas` and `/hotspots/areas/forecast` expose static and multi-year hotspot scores.
-  - Frontend will join these scores with ward/zone GeoJSON to render choropleth maps once the map components are implemented.
+  - React frontend renders an OpenStreetMap-based Leaflet map that overlays hotspot scores from `/hotspots/areas` and `/hotspots/areas/forecast` as soft translucent red circles; when Optimize is active, improving areas (based on forecast vs current scores) are highlighted in soft translucent green as potential optimal zones.
+  - Joining hotspot scores with ward/zone GeoJSON or Overpass geometries to render full choropleth maps remains a future enhancement; the current implementation uses a simple radial layout around the city center.
 
 UI notes (Render):
 - The dashboard/sidebar includes an `area-select` dropdown populated from `/areas`. Until an area is selected, pages show descriptive content and placeholder charts only; once selected, the UI calls the real API endpoints for data (no Demo/API toggle in the UI).
@@ -197,9 +198,16 @@ Examples (API responses, truncated):
 - Frontend (React + Tailwind under `src/frontend`)
   - Scaffolded a Vite+React+TypeScript+Tailwind SPA with pages for Dashboard, Urban Growth, Energy, and Traffic.
   - Implemented an area-driven sidebar wired to `/areas` with live search, suggestions, and selection, and lifted `selectedArea` state into `App`.
-  - Implemented shared API helpers and hooks (`api.ts`, `useAdvisory`, `useGrowthSeries`, `useEnergySeries`, `useTrafficSeries`) to fetch REAL data series and advisory insights from the FastAPI backend.
-  - Implemented minimalist SVG-based `BarChart`, `LineChart`, and `Histogram` components (no gridlines) that display REAL growth/energy/traffic series once an area is selected.
-  - Added REAL vs SIMULATE mode toggles and a floating `ActionToggle` for Predict/Optimize/Simulate (currently switching UI modes; simulation API wiring is planned).
+- Sidebar now uses a fixed, left-aligned layout with Montserrat typography and two responsive modes:
+  - Desktop: wider rail with labels, larger nav icons, and a clear active-state rail (full-width dark highlight with a teal left border).
+  - Mobile: off-canvas panel opened via a top-left hamburger; the same nav icons are shown, and the sidebar can collapse to an icon-only rail on larger screens using a small edge toggle.
+- Area search is available both in the sidebar (desktop) and as a top-of-header search bar on mobile; both feed the same `/areas` suggestions and update the shared `selectedArea` state.
+- Implemented shared API helpers and hooks (`api.ts`, `useAdvisory`, `useGrowthSeries`, `useEnergySeries`, `useTrafficSeries`) to fetch REAL data series and advisory insights from the FastAPI backend.
+- Implemented minimalist SVG-based `BarChart`, `LineChart`, and `Histogram` components (no gridlines) that display REAL growth, energy, and traffic series once an area is selected, all using a unified accent color for bars/lines and small chart icons in the titles.
+- Wired REAL vs SIMULATE modes on the Urban Growth, Energy, and Traffic pages to the `/simulate/run` endpoint via a dedicated simulation hook, including simple parameter controls for exploring scenarios.
+- Implemented an OSM-based Leaflet map component that overlays `/hotspots/areas` and `/hotspots/areas/forecast`, showing dense population, congestion, and inefficient energy usage as soft translucent red regions and highlighting improving areas as soft translucent green "optimal zones" when Optimize is active; hooked this into a floating `ActionToggle` (Predict/Optimize/Simulate) positioned at the bottom-right with project-specified colors. A simple "optimal zones" concept exists today (green hotspots and a derived optimal-zones list), and advisory panels include contextual text that references these green zones when Optimize is active.
+- Added a sticky, blurred page header that enlarges and brightens the gradient page title and icon on scroll for better contrast over a semi-transparent black background, plus a small semantic icon per page (home, growth, energy, traffic), and a compact Sign out button that remains visible on mobile.
+- Added a frosted-glass "Insights" container on each page (with a galaxy-style icon) and a persistent, slightly darker footer strip describing SUSPS and attribution (Developed by David Lameck).
 
 - Environment parity
   - Confirmed the local vs Render story (local PostgreSQL + `data/<CITY>/{raw,processed}` vs Render PostgreSQL + S3 `susps-raw-data`) and S3 sync tooling as described below.

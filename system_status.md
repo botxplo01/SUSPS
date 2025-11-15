@@ -11,7 +11,7 @@ This document summarizes the current state of the SUSPS repository: what’s don
 - Pipeline and data layout: API-first ingestion writes to `data/<CITY>/raw/` (OpenWeather default, Open‑Meteo optional; OpenAQ; TomTom). Preprocess writes to `data/<CITY>/processed/` (environment_features, energy_features, traffic_features, air_quality_daily, hotspot CSVs). Census and precomputed growth forecast (`growth_forecast_city.csv`) plus Urban_Growth features remain integrated.
 - Storage and environments: Local runs with a local PostgreSQL instance plus file-based data under `data/<CITY>/{raw,processed}`; Render runs against managed PostgreSQL and AWS S3 bucket `susps-raw-data` (region `eu-north-1`) holding the same raw datasets. `src/pipeline.s3_sync` keeps local `data/<CITY>/raw/` and S3 in sync so results match between local and Render.
 - Frontend (Dash): Sidebar uses an `area-select` dropdown populated from `/areas`; there is no longer a Demo/API data-source toggle. On initial load (no area selected) each page shows descriptive text and placeholder charts only; charts and advisory are populated only once an area is chosen, and the advisory engine now receives the selected area (`zone_id`) so guidance is explicitly scoped.
-- Frontend (React + Tailwind, `src/frontend`): New Vite+React+TypeScript+Tailwind SPA scaffold with Dashboard, Urban Growth, Energy, and Traffic pages; area selection is wired via a sidebar backed by `/areas`, REAL-mode charts consume `/growth`, `/energy`, `/traffic`, and advisory content is loaded via `/advisory/{scope}`. SIMULATE behavior and hotspot maps are planned next.
+- Frontend (React + Tailwind, `src/frontend`): Vite+React+TypeScript+Tailwind SPA with Dashboard, Urban Growth, Energy, and Traffic pages; area selection is wired via a fixed left sidebar backed by `/areas` (Montserrat typography, larger nav icons, and a rail-style active highlight with a teal left border), with a mobile hamburger and icon-only collapsed mode on desktop; REAL and SIMULATE modes are wired on the domain pages using `/growth`, `/energy`, `/traffic`, and `/simulate/run`; advisory content is loaded via `/advisory/{scope}` and rendered in frosted-glass "Insights" panels with a galaxy-style icon; an OSM-based hotspot map overlays `/hotspots/areas` and `/hotspots/areas/forecast`, showing dense population, congestion, and inefficient energy usage in soft translucent red and potential optimal zones in soft translucent green when Optimize is active; and the layout includes a sticky blurred page header with gradient titles/icons, a mobile-visible Sign out button, and a persistent slightly darker footer strip describing SUSPS and attribution.
 - Docs: WARP.md and README document the local+Render parity story (Postgres + S3), backend capabilities (simulation, time-series, hotspots), and both the legacy Dash and new React area-driven frontends; this status doc reflects that.
 
 ## 1) What’s implemented
@@ -34,9 +34,9 @@ This document summarizes the current state of the SUSPS repository: what’s don
   - Endpoints: `/traffic`, `/traffic/summary`, planned `/traffic/hourly` (future), `/advisory/traffic`.
   - Area-driven behavior: same `area-select` gate; charts are populated from `/traffic` and `/traffic/summary` only after an area is chosen.
   - Advisory: Uses `/advisory/traffic`, summarizing recent traffic flows.
-- Hotspot maps (planned UI)
+- Hotspot maps (React UI + OSM-based overlays)
   - Endpoints: `/hotspots/areas`, `/hotspots/areas/forecast`.
-  - Behavior: backend and pipeline are ready; the UI will join hotspot scores with ward/zone GeoJSON to render choropleth maps, likely filtered by the selected area or city.
+  - Behavior: React frontend renders an OpenStreetMap-based Leaflet map that overlays hotspot scores as soft translucent red circles; when Optimize is active, improving areas (based on forecast vs current scores) are highlighted in soft translucent green as potential optimal zones, with a small derived "optimal zones" list displayed next to the map. Joining these scores with ward/zone GeoJSON to render choropleth polygons remains a future enhancement; the current implementation uses a simple radial layout around the city center.
 
 |- App structure
   - Unified FastAPI + Dash app for both local and Render: `src/backend/api.py` + `src/webapp/app.py`, with CORS, `/health`, and Dash mounted under `/dash/`.
@@ -60,9 +60,10 @@ This document summarizes the current state of the SUSPS repository: what’s don
 ## 2) What remains (near-term)
 
 - Frontend: complete React migration and area-driven behavior
-  - Wire SIMULATE mode in the React UI to `/simulate/run` (and optionally `/ts/forecast`) on the Urban Growth, Energy, and Traffic pages.
-  - Replace the `Map` placeholder in React with a real OSM-based map component (e.g., MapLibre/Leaflet) and overlay `/hotspots/areas` and `/hotspots/areas/forecast` joined with ward/zone GeoJSON.
+  - Polish SIMULATE mode flows in the React UI (e.g., consider surfacing `/ts/forecast` where appropriate and refine parameter controls on the Urban Growth, Energy, and Traffic pages that already call `/simulate/run`).
+  - Evolve the React map from the current OSM-based hotspot overlays into proper ward/zone-based choropleths by joining `/hotspots/areas` and `/hotspots/areas/forecast` with GeoJSON geometries.
   - Optionally surface additional summary views on the React Dashboard by aggregating growth/energy/traffic series or using `/energy/summary` and `/traffic/summary` once area filtering is in place.
+  - Consider adding an explicit "optimal zones" list next to the hotspot map and refining advisory copy to reference these green optimal zones when Optimize is active.
   - Ensure that when no area is selected in React, each page shows only descriptive content and placeholder visuals, matching the existing Dash behavior.
 - Backend/frontend integration
   - Extend core endpoints (`/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary`) to accept an `area_id` (or similar) and filter results accordingly.
@@ -129,18 +130,20 @@ Milestone M2 — Backend feature completeness and environment parity (MOSTLY DON
 - Pipeline: API-first ingest (OpenWeather/OpenAQ/TomTom) with fallbacks; preprocess produces environment/energy/traffic/AQ features, census-based growth forecasts, and hotspot CSVs.
 - Environment parity: local PostgreSQL + `data/<CITY>/{raw,processed}` vs Render PostgreSQL + S3 `susps-raw-data`, kept aligned via `src.pipeline.s3_sync` and documented bootstrap steps.
 
-Milestone M3 — Area-driven frontend & hotspot maps (IN PROGRESS)
+Milestone M3  Area-driven frontend & hotspot maps (IN PROGRESS)
 - Completed:
   - Removed Demo/API toggle from Dash and introduced an `area-select` dropdown gating all charts and advisory.
   - Scaffolded the new React+Tailwind frontend with Dashboard, Urban Growth, Energy, and Traffic pages, and wired area selection via `/areas` plus REAL-mode charts and advisory.
+  - Wired REAL vs SIMULATE modes on the React Urban Growth, Energy, and Traffic pages to `/simulate/run`, with basic parameter controls where appropriate.
+  - Implemented an OSM-based hotspot map in the React frontend that overlays `/hotspots/areas` and `/hotspots/areas/forecast`, with dense/problematic areas shown in soft translucent red and improving areas highlighted in soft translucent green when Optimize is active.
 - Pending:
   - Extend `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary` to accept `area_id` (or equivalent) and filter appropriately.
   - Ensure both Dash and React pass the selected area into these endpoints and reflect the selected area clearly in the UI.
-  - Implement hotspot choropleths using `/hotspots/areas` and `/hotspots/areas/forecast` joined with ward/zone GeoJSON in the new React UI (and optionally Dash).
+  - Replace the current radial hotspot layout with ward/zone-based choropleths by joining `/hotspots/areas` and `/hotspots/areas/forecast` with GeoJSON geometries in the new React UI (and optionally Dash).
   - Ensure that when no area is selected, each page in both frontends shows only descriptive content and placeholder charts/maps.
 
-Milestone M4 — UX polish, simulation & forecasting surfaces
-- Add simple UI for SIMULATE runs in React (e.g., sliders/inputs on Growth/Energy/Traffic pages calling `/simulate/run`).
+Milestone M4  UX polish, simulation & forecasting surfaces
+- Refine the SIMULATE UI in React (existing sliders/inputs on Growth, Energy, and Traffic pages calling `/simulate/run`) and ensure results and advisory copy are easy to interpret.
 - Optionally expose `/ts/forecast` in charts for extended forecast scenarios.
 - Add help tooltips and page descriptions explaining each page's purpose and how area selection affects data.
 

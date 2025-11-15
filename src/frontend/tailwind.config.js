@@ -9,6 +9,9 @@ module.exports = {
       colors: {
         sidebar: "#404040",
       },
+      fontFamily: {
+        sans: ["Montserrat", "system-ui", "sans-serif"],
+      },
     },
   },
   plugins: [],

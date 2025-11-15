@@ -434,13 +434,29 @@ def traffic_summary(area_id: Optional[int] = Query(None)):
 
 
 @app.get("/hotspots/areas")
-def hotspots_areas():
+def hotspots_areas(
+    admin_unit: Optional[str] = Query(
+        None,
+        description="Optional exact admin_unit filter (case-insensitive).",
+    ),
+    zone_id: Optional[str] = Query(
+        None,
+        description=(
+            "Optional zone/area name filter; matched against admin_unit "
+            "case-insensitively, with exact-match preferred over partial."
+        ),
+    ),
+):
     """Return area-level hotspot scores from processed artifacts.
 
     Reads data/<CITY>/processed/hotspots_areas.csv if present. This file is
     produced by `src.pipeline.preprocess.preprocess_hotspots` and is fully
     deterministic and model-free. The frontend can join the returned
     admin_unit scores with a GeoJSON of wards/neighborhoods to render maps.
+
+    When `admin_unit` or `zone_id` are provided, results are filtered by the
+    admin_unit column (case-insensitive), preferring exact matches and
+    falling back to substring matches for `zone_id`.
     """
 
     try:
@@ -451,6 +467,21 @@ def hotspots_areas():
         if not f.exists():
             return {"items": []}
         df = pd.read_csv(f)
+        if "admin_unit" in df.columns:
+            if admin_unit:
+                target = admin_unit.strip().lower()
+                mask = df["admin_unit"].str.lower() == target
+                df = df[mask]
+            elif zone_id:
+                target = zone_id.strip().lower()
+                col = df["admin_unit"].str.lower()
+                exact = col == target
+                if exact.any():
+                    df = df[exact]
+                else:
+                    partial = col.str.contains(target)
+                    if partial.any():
+                        df = df[partial]
         items = df.to_dict(orient="records")
         return {"items": items}
     except Exception as e:
@@ -458,12 +489,26 @@ def hotspots_areas():
 
 
 @app.get("/hotspots/areas/forecast")
-def hotspots_areas_forecast(year: Optional[int] = Query(None)):
+def hotspots_areas_forecast(
+    year: Optional[int] = Query(None),
+    admin_unit: Optional[str] = Query(
+        None,
+        description="Optional exact admin_unit filter (case-insensitive).",
+    ),
+    zone_id: Optional[str] = Query(
+        None,
+        description=(
+            "Optional zone/area name filter; matched against admin_unit "
+            "case-insensitively, with exact-match preferred over partial."
+        ),
+    ),
+):
     """Return multi-year area-level hotspot forecasts.
 
     Reads data/<CITY>/processed/hotspots_areas_forecast.csv if present and
-    optionally filters by `year` query parameter. This file is produced by
-    `preprocess_hotspots_forecast` and remains deterministic and model-free.
+    optionally filters by `year` and admin_unit/zone_id query parameters. This
+    file is produced by `preprocess_hotspots_forecast` and remains deterministic
+    and model-free.
     """
 
     try:
@@ -476,6 +521,21 @@ def hotspots_areas_forecast(year: Optional[int] = Query(None)):
         df = pd.read_csv(f)
         if year is not None and "year" in df.columns:
             df = df[df["year"] == year]
+        if "admin_unit" in df.columns:
+            if admin_unit:
+                target = admin_unit.strip().lower()
+                mask = df["admin_unit"].str.lower() == target
+                df = df[mask]
+            elif zone_id:
+                target = zone_id.strip().lower()
+                col = df["admin_unit"].str.lower()
+                exact = col == target
+                if exact.any():
+                    df = df[exact]
+                else:
+                    partial = col.str.contains(target)
+                    if partial.any():
+                        df = df[partial]
         items = df.to_dict(orient="records")
         return {"items": items}
     except Exception as e:

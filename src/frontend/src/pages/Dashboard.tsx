@@ -6,6 +6,7 @@ import { Map } from "../components/Map";
 import { InsightsSection } from "../components/InsightsSection";
 import type { Area } from "../types";
 import { useAdvisory } from "../hooks/useAdvisory";
+import { useGrowthSeries, useEnergySeries, useTrafficSeries } from "../hooks/useSeries";
 
 interface DashboardPageProps {
   selectedArea: Area | null;
@@ -13,7 +14,11 @@ interface DashboardPageProps {
 
 export function DashboardPage({ selectedArea }: DashboardPageProps) {
   const zoneId = selectedArea ? selectedArea.name : null;
+  const areaId = selectedArea ? selectedArea.id : null;
   const { insights, loading, error } = useAdvisory("dashboard", zoneId);
+  const { points: growthPoints } = useGrowthSeries(areaId);
+  const { points: energyPoints } = useEnergySeries(areaId);
+  const { points: trafficPoints } = useTrafficSeries(areaId);
 
   return (
     <div className="space-y-4">
@@ -30,21 +35,19 @@ export function DashboardPage({ selectedArea }: DashboardPageProps) {
           </>
         ) : (
           <>
-            Select an area from the sidebar to load data-driven summaries. Until
-            an area is selected, the dashboard shows only this overview and
-            placeholder panels.
+            Select an area from the sidebar to load data-driven summaries.
           </>
         )}
       </DescriptionSection>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <BarChart title="Urban Growth Summary" />
-        <BarChart title="Energy Summary" />
+        <BarChart title="Urban Growth Summary" data={growthPoints} />
+        <BarChart title="Energy Summary" data={energyPoints} />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <LineChart title="Traffic Summary" />
-        <Map />
+        <LineChart title="Traffic Summary" data={trafficPoints} />
+        <Map zoneId={selectedArea?.name ?? null} />
       </div>
 
       <InsightsSection>
