@@ -35,6 +35,8 @@ ANALYSIS.md
 build/
 *.spec
 
+# Node / JS
+node_modules/
 
 # OS
 .DS_Store
