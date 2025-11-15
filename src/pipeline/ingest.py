@@ -294,9 +294,11 @@ def fetch_air_quality() -> pd.DataFrame:
         if not api_key:
             raise RuntimeError("OPEN_AQ_API_KEY not set")
         # Query last 30 days in Nairobi; OpenAQ v2
-        date_from = (datetime.utcnow() - timedelta(days=30)).isoformat(
+        # Use timezone-aware UTC timestamps (PEP 495/PEP 564 compliant)
+        now_utc = datetime.now(timezone.utc)
+        date_from = (now_utc - timedelta(days=30)).isoformat(
             timespec="seconds"
-        ) + "Z"
+        ).replace("+00:00", "Z")
         params = {
             "city": "Nairobi",
             "country": "KE",

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";
 import type { LatLngExpression } from "leaflet";
 import { useHotspotAreas, useHotspotForecast } from "../hooks/useHotspots";
@@ -12,104 +12,99 @@ interface MapProps {
   zoneId?: string | null;
 }
 
-export function Map({ optimize = false, zoneId }: MapProps) {
+export function HotspotMap({ optimize = false, zoneId }: MapProps) {
   const [yearOffset, setYearOffset] = useState<number>(0);
   const { items: baseAreas, loading: baseLoading, error: baseError } =
     useHotspotAreas(zoneId);
   const { items: forecastAreas, loading: forecastLoading } =
     useHotspotForecast(undefined, zoneId);
 
-  const currentYear = useMemo(() => {
-    if (forecastAreas.length === 0) return undefined;
+  // Derive currentYear and per-year forecast without extra hooks to avoid
+  // any potential hooks-order issues when React re-renders in StrictMode.
+  let currentYear: number | undefined = undefined;
+  if (forecastAreas.length > 0) {
     const years = forecastAreas
       .map((a) => a.year)
       .filter((y) => Number.isFinite(y));
-    if (!years.length) return undefined;
-    const min = Math.min(...years);
-    const max = Math.max(...years);
-    const clampedOffset = Math.max(0, Math.min(yearOffset, max - min));
-    return min + clampedOffset;
-  }, [forecastAreas, yearOffset]);
+    if (years.length > 0) {
+      const min = Math.min(...years);
+      const max = Math.max(...years);
+      const clampedOffset = Math.max(0, Math.min(yearOffset, max - min));
+      currentYear = min + clampedOffset;
+    }
+  }
 
-  const forecastForYear = useMemo(() => {
-    if (!currentYear) return [];
-    return forecastAreas.filter((a) => a.year === currentYear);
-  }, [forecastAreas, currentYear]);
+  const forecastForYear = currentYear
+    ? forecastAreas.filter((a) => a.year === currentYear)
+    : [];
 
-  const topCurrent = useMemo(
-    () =>
-      [...baseAreas]
-        .filter((a) => (a.hotspot_score ?? 0) > 0)
-        .sort((a, b) => (b.hotspot_score ?? 0) - (a.hotspot_score ?? 0))
-        .slice(0, 6),
-    [baseAreas],
-  );
+  const topCurrent = [...baseAreas]
+    .filter((a) => (a.hotspot_score ?? 0) > 0)
+    .sort((a, b) => (b.hotspot_score ?? 0) - (a.hotspot_score ?? 0))
+    .slice(0, 6);
 
-  const topFuture = useMemo(
-    () =>
-      [...forecastForYear]
-        .filter((a) => (a.hotspot_score ?? 0) > 0)
-        .sort((a, b) => (b.hotspot_score ?? 0) - (a.hotspot_score ?? 0))
-        .slice(0, 6),
-    [forecastForYear],
-  );
+  const topFuture = [...forecastForYear]
+    .filter((a) => (a.hotspot_score ?? 0) > 0)
+    .sort((a, b) => (b.hotspot_score ?? 0) - (a.hotspot_score ?? 0))
+    .slice(0, 6);
 
-  const optimalZones = useMemo(
-    () => {
-      if (!forecastForYear.length || !baseAreas.length) return [];
-      const baseByUnit = new Map(baseAreas.map((a) => [a.admin_unit, a] as const));
-      return forecastForYear
-        .map((future) => {
-          const base = baseByUnit.get(future.admin_unit);
-          const baseScore = base?.hotspot_score ?? 0;
-          const futureScore = future.hotspot_score ?? 0;
-          const improvement = baseScore - futureScore;
-          return {
-            admin_unit: future.admin_unit,
-            baseScore,
-            futureScore,
-            improvement,
-          };
-        })
-        .filter(
-          (z) =>
-            z.baseScore > 0.1 &&
-            z.futureScore > 0 &&
-            z.improvement >= MIN_IMPROVEMENT,
-        )
-        .sort((a, b) => b.improvement - a.improvement)
-        .slice(0, 5);
-    },
-    [baseAreas, forecastForYear],
-  );
+  const optimalZones = (() => {
+    if (!forecastForYear.length || !baseAreas.length) return [] as {
+      admin_unit: string;
+      baseScore: number;
+      futureScore: number;
+      improvement: number;
+    }[];
+    const baseByUnit = new Map(baseAreas.map((a) => [a.admin_unit, a] as const));
+    return forecastForYear
+      .map((future) => {
+        const base = baseByUnit.get(future.admin_unit);
+        const baseScore = base?.hotspot_score ?? 0;
+        const futureScore = future.hotspot_score ?? 0;
+        const improvement = baseScore - futureScore;
+        return {
+          admin_unit: future.admin_unit,
+          baseScore,
+          futureScore,
+          improvement,
+        };
+      })
+      .filter(
+        (z) =>
+          z.baseScore > 0.1 && z.futureScore > 0 && z.improvement >= MIN_IMPROVEMENT,
+      )
+      .sort((a, b) => b.improvement - a.improvement)
+      .slice(0, 5);
+  })();
 
-  const filteredOptimalZones = useMemo(() => {
+  const filteredOptimalZones = (() => {
     if (!zoneId) return optimalZones;
     const target = zoneId.toLowerCase();
-    const exact = optimalZones.filter(
-      (z) => z.admin_unit.toLowerCase() === target,
-    );
+    const exact = optimalZones.filter((z) => z.admin_unit.toLowerCase() === target);
     if (exact.length > 0) return exact;
     const partial = optimalZones.filter((z) =>
       z.admin_unit.toLowerCase().includes(target),
     );
     return partial.length > 0 ? partial : optimalZones;
-  }, [optimalZones, zoneId]);
+  })();
 
   const isLoading = baseLoading || forecastLoading;
 
   // Simple fan-out layout of markers around the city center until true
   // GeoJSON-based joins are wired, in line with instructions.md.
-  const markerPositions: LatLngExpression[] = useMemo(() => {
+  const markerPositions: LatLngExpression[] = (() => {
     const count = Math.max(topCurrent.length, topFuture.length);
     if (!count) return [];
     const [lat, lng] = DEFAULT_CENTER as [number, number];
     const radius = 0.02; // ~2km at equator
     return Array.from({ length: count }, (_, idx) => {
       const angle = (2 * Math.PI * idx) / count;
-      return [lat + radius * Math.cos(angle), lng + radius * Math.sin(angle)] as LatLngExpression;
+      return [
+        lat + radius * Math.cos(angle),
+        lng + radius * Math.sin(angle),
+      ] as LatLngExpression;
     });
-  }, [topCurrent.length, topFuture.length]);
+  })();
 
   return (
     <section className="rounded-xl bg-white p-4 shadow-sm">

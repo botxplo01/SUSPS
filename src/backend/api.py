@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi import Query
 from fastapi.middleware.cors import CORSMiddleware
-from a2wsgi import WSGIMiddleware
 from starlette.responses import JSONResponse
 from starlette.responses import RedirectResponse
 from pydantic import BaseModel
@@ -31,7 +30,6 @@ from src.models.traffic import (
     daily_profile as traffic_profile,
     daily_profile_from_processed as traffic_profile_from_processed,
 )
-from src.webapp.app import create_dash_app
 from src.backend.advisory import generate_insights_from_scope
 from src.backend.advisory.hf_client import HFTextGenerator
 from src.backend.simulation import (
@@ -293,16 +291,10 @@ def demo_traffic(area_id: Optional[int] = Query(None)):
     return {"items": items}
 
 
-# Redirect root to dashboard so primary URL works on Render
+# Root route: redirect to interactive API docs
 @app.get("/")
 def root_redirect():
-    return RedirectResponse(url="/dash/")
-
-
-# Mount Dash app under /dash
-_dash_app = create_dash_app(requests_pathname_prefix="/dash/")
-# a2wsgi.WSGIMiddleware is a valid ASGI app; ignore type to satisfy mypy's signature expectations
-app.mount("/dash", WSGIMiddleware(_dash_app.server))  # type: ignore[arg-type]
+    return RedirectResponse(url="/docs")
 
 
 # Optional summaries

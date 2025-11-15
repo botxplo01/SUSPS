@@ -4,7 +4,7 @@ import { ModeToggle } from "../components/ModeToggle";
 import { DescriptionSection } from "../components/DescriptionSection";
 import { Table } from "../components/Table";
 import { Histogram } from "../components/Histogram";
-import { Map } from "../components/Map";
+import { HotspotMap } from "../components/Map";
 import { InsightsSection } from "../components/InsightsSection";
 import { ActionToggle } from "../components/ActionToggle";
 import type { Area, Mode } from "../types";
@@ -134,7 +134,7 @@ export function TrafficPage({ selectedArea }: TrafficPageProps) {
 
       <div className="grid gap-4 md:grid-cols-2">
         <Histogram title="Traffic Volume" data={chartPoints} />
-        <Map optimize={optimize} zoneId={selectedArea?.name ?? null} />
+        <HotspotMap optimize={optimize} zoneId={selectedArea?.name ?? null} />
       </div>
 
       {selectedArea && trafficLoading && (

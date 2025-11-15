@@ -2,7 +2,7 @@ import { AreaBadge } from "../components/AreaBadge";
 import { DescriptionSection } from "../components/DescriptionSection";
 import { LineChart } from "../components/LineChart";
 import { BarChart } from "../components/BarChart";
-import { Map } from "../components/Map";
+import { HotspotMap } from "../components/Map";
 import { InsightsSection } from "../components/InsightsSection";
 import type { Area } from "../types";
 import { useAdvisory } from "../hooks/useAdvisory";
@@ -47,7 +47,7 @@ export function DashboardPage({ selectedArea }: DashboardPageProps) {
 
       <div className="grid gap-4 md:grid-cols-2">
         <LineChart title="Traffic Summary" data={trafficPoints} />
-        <Map zoneId={selectedArea?.name ?? null} />
+        <HotspotMap zoneId={selectedArea?.name ?? null} />
       </div>
 
       <InsightsSection>

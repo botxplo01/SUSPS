@@ -2,14 +2,15 @@
 
 SUSPS is an AI-driven system to predict urban growth, forecast energy demand, and simulate traffic flow for Zambian cities.
 
-- Web UI: Dash (Plotly) mounted on FastAPI
+- Web UI: React + Tailwind CSS SPA in `src/frontend`
 - Backend: FastAPI (Python)
-- Deployment: Render (Procfile + Gunicorn)
+- Deployment: Render (Procfile + Gunicorn) for the API; Vite for local frontend dev
 
 Quick start:
 - Create a venv and install requirements
-- Run locally: `uvicorn src.backend.api:app --reload`
-- Open Dash: http://127.0.0.1:8000/dash/
+- Run backend locally: `uvicorn src.backend.api:app --reload`
+- In a separate terminal, start the React dev server from `src/frontend`: `npm install` then `npm run dev`
+- Open the React UI at the URL printed by Vite (default http://127.0.0.1:5173)
 
 See `docs/specification.md` for the full spec and `docs/user_guide.md` for usage.
 

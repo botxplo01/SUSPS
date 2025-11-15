@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from sqlalchemy import (
     Column,
     BigInteger,
@@ -17,7 +19,36 @@ try:  # optional: if geoalchemy2 is available
 except Exception:  # pragma: no cover
     Geometry = None  # type: ignore
 
+# Geometry columns are optional at runtime. Even when geoalchemy2 is installed,
+# some deployments may use a schema where the geometry column was not created.
+# To avoid runtime errors like "column urban_areas.geometry does not exist",
+# we only map geometry fields when DB_ENABLE_GEOMETRY is explicitly turned on.
+_DB_ENABLE_GEOMETRY = (
+    os.getenv("DB_ENABLE_GEOMETRY", "").strip().lower() in {"1", "true", "yes", "on"}
+)
+
 from .base import Base
+
+
+def _get_srid_from_env(default: int = 4326) -> int:
+    """Resolve SRID for spatial columns based on DB_SPATIAL_CRS.
+
+    Accepts values like 'EPSG:4326' or '4326'; falls back to 4326 on errors.
+    """
+
+    crs = os.getenv("DB_SPATIAL_CRS", "") or ""
+    if not crs:
+        return default
+    # Strip common 'EPSG:' prefix or similar
+    if ":" in crs:
+        crs = crs.split(":", 1)[1]
+    try:
+        return int(crs)
+    except ValueError:
+        return default
+
+
+_SRID = _get_srid_from_env()
 
 
 class UrbanArea(Base):
@@ -31,9 +62,10 @@ class UrbanArea(Base):
     area_id = Column(BigInteger, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False)
     area_type = Column(Text, nullable=False)
-    # geometry column is optional at runtime
-    if Geometry is not None:
-        geometry = Column(Geometry("MULTIPOLYGON", srid=4326), nullable=True)
+    # geometry column is optional at runtime and only mapped when
+    # DB_ENABLE_GEOMETRY is explicitly enabled.
+    if Geometry is not None and _DB_ENABLE_GEOMETRY:
+        geometry = Column(Geometry("MULTIPOLYGON", srid=_SRID), nullable=True)
 
 
 class Area(Base):
@@ -49,9 +81,9 @@ class Area(Base):
     name = Column(String(150), nullable=False)
     area_type = Column(String(50), nullable=False, default="city")
     description = Column(Text, nullable=True)
-    # Optional geometry; presence depends on geoalchemy2
-    if Geometry is not None:  # type: ignore[truthy-function]
-        geometry = Column(Geometry("MULTIPOLYGON", srid=4326), nullable=True)  # type: ignore[arg-type]
+    # Optional geometry; presence depends on geoalchemy2 and DB_ENABLE_GEOMETRY.
+    if Geometry is not None and _DB_ENABLE_GEOMETRY:  # type: ignore[truthy-function]
+        geometry = Column(Geometry("MULTIPOLYGON", srid=_SRID), nullable=True)  # type: ignore[arg-type]
     boundary_hint = Column(
         Text, nullable=True
     )  # e.g., bounding box or GeoJSON reference

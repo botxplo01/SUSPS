@@ -1,10 +1,22 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import re
 import pandas as pd
 
-from . import config
+# Support both `python -m src.pipeline.preprocess` (preferred) and direct
+# script invocation like `python src/pipeline/preprocess.py`.
+try:  # pragma: no cover - normal path when run as a module
+    from . import config
+except ImportError:  # pragma: no cover - fallback for script usage
+    import sys
+    from pathlib import Path as _Path
+
+    ROOT = _Path(__file__).resolve().parents[2]
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from src.pipeline import config
 
 
 def preprocess_census() -> Path:
@@ -627,13 +639,18 @@ def main() -> None:
     ).exists():
         aq = preprocess_air_quality()
 
-    # Urban growth (optional, requires SETTLEMENTS_PATH / GRID3_SETTLEMENTS_PATH)
+    # Urban growth (optional, requires SETTLEMENTS_PATH / GRID3_SETTLEMENTS_PATH).
+    # This step can be expensive when pointed at large settlement datasets, so it
+    # is gated behind an environment flag and fully optional for tests and
+    # lightweight local runs.
     ug = None
-    try:
-        ug_cat, ug_feat = preprocess_urban_growth()
-        ug = (ug_cat, ug_feat)
-    except Exception:
-        ug = None
+    run_ug_env = os.getenv("SUSPS_PREPROCESS_URBAN_GROWTH", "").strip().lower()
+    if run_ug_env in {"1", "true", "yes", "on"}:
+        try:
+            ug_cat, ug_feat = preprocess_urban_growth()
+            ug = (ug_cat, ug_feat)
+        except Exception:
+            ug = None
 
     se = preprocess_socioeconomic()
     # Hotspots depend on worldpop + socioeconomics; compute after both.

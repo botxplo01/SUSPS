@@ -26,7 +26,7 @@ SWE-Project--SUSPS/
 │   ├── specification.md
 │   └── user_guide.md
 ├── src/                               # application source
-│   ├── backend/                       # FastAPI + Dash mount
+│   ├── backend/                       # FastAPI API
 │   │   ├── __init__.py
 │   │   ├── api.py
 │   │   ├── models/
@@ -36,13 +36,9 @@ SWE-Project--SUSPS/
 │   ├── desktop/                       # desktop entry point
 │   │   ├── __init__.py
 │   │   └── main.py
-│   ├── webapp/                        # Dash app
-│   │   ├── __init__.py
-│   │   ├── app.py
-│   │   ├── callbacks/
-│   │   │   └── __init__.py
-│   │   └── layouts/
-│   │       └── __init__.py
+│   ├── frontend/                      # React + Tailwind SPA
+│   │   ├── package.json
+│   │   └── src/
 │   └── pipeline/                      # data pipeline
 │       ├── __init__.py
 │       ├── ingest.py                  # fetch OSM, GHSL, WorldPop etc.

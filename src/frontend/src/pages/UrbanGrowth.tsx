@@ -4,7 +4,7 @@ import { ModeToggle } from "../components/ModeToggle";
 import { DescriptionSection } from "../components/DescriptionSection";
 import { Table } from "../components/Table";
 import { BarChart } from "../components/BarChart";
-import { Map } from "../components/Map";
+import { HotspotMap } from "../components/Map";
 import { InsightsSection } from "../components/InsightsSection";
 import { ActionToggle } from "../components/ActionToggle";
 import type { Area, Mode } from "../types";
@@ -78,7 +78,7 @@ export function UrbanGrowthPage({ selectedArea }: UrbanGrowthPageProps) {
 
       <div className="grid gap-4 md:grid-cols-2">
         <BarChart title="Population Growth" data={chartPoints} />
-        <Map optimize={optimize} zoneId={selectedArea?.name ?? null} />
+        <HotspotMap optimize={optimize} zoneId={selectedArea?.name ?? null} />
       </div>
 
       {selectedArea && growthLoading && (

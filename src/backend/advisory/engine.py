@@ -172,7 +172,8 @@ def generate_insights_from_scope(
 
     gen = HFTextGenerator()
     text = gen.generate(prompt)
-    now_iso = dt.datetime.utcnow().isoformat() + "Z"
+    # Use timezone-aware UTC timestamp to avoid utcnow deprecation
+    now_iso = dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
     # Detect HF fallback string and avoid caching it
     is_fallback = text.strip().startswith("Advisory engine is temporarily unavailable;")
     if is_fallback:

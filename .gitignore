@@ -45,6 +45,7 @@ Thumbs.db
 # Logs
 logs/
 *.log
+console_export.log
 
 # Ruff
 .ruff_cache/
