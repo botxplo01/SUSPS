@@ -18,9 +18,9 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
     - Windows (PowerShell): `py -3.11 -m venv .venv; .\.venv\Scripts\Activate.ps1; pip install -r requirements.txt`
     - macOS/Linux: `python3.11 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`
 
-- Run the app locally (FastAPI + Dash, no DB)
+- Run the backend locally (FastAPI API, no DB)
   - Start: `uvicorn src.backend.api:app --reload`
-  - Open: http://127.0.0.1:8000/dash/ (health: http://127.0.0.1:8000/health)
+  - Open: http://127.0.0.1:8000/docs (health: http://127.0.0.1:8000/health)
 
 - Run the React frontend (Vite + React + Tailwind)
   - From repo root: `cd src/frontend`
@@ -61,15 +61,32 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - Build: `pip install -r requirements.txt`
   - Start: `gunicorn src.backend.api:app -k uvicorn.workers.UvicornWorker --timeout 120`
   - Health check path: `/health` (see `render.yaml`, `Procfile`).
-  - Dash mounting uses `a2wsgi.WSGIMiddleware` (replaces deprecated Starlette WSGI middleware).
+  - Root path `/` redirects to `/docs`; the React SPA is served by Vite locally (or another static host in production).
+
+## Quick start (local full stack)
+
+### Option A – FastAPI API + React SPA (no DB)
+- Create and activate a virtualenv and install Python deps (see commands above).
+- In one terminal, run `uvicorn src.backend.api:app --reload`.
+- In another terminal, from `src/frontend`, run `npm install` (first time) then `npm run dev`.
+- Open `http://localhost:5173`, ensure `VITE_API_BASE_URL` points at the backend (default `http://127.0.0.1:8000`), and select "Nairobi" in the sidebar to load data.
+
+### Option B – With local Postgres (DB-backed API)
+- Start PostgreSQL and set `USE_LOCAL_DB=true` and `LOCAL_DATABASE_URL` in `.env`.
+- Generate processed artifacts and seed the DB:
+  ```bash
+  python -m src.pipeline.ingest
+  python -m src.pipeline.preprocess
+  python -m src.backend.db.seed_from_processed
+  ```
+- Then run the FastAPI backend and React frontend as in Option A.
 
 ## Architecture and structure (big picture)
 
 ### Repository structure (streamlined)
 - src/
   - backend/: unified FastAPI app (primary API for local + Render) and advisory module
-  - webapp/: legacy Dash UI used by the unified API (to be superseded by the new React frontend).
-  - frontend/: Vite + React + Tailwind SPA (`src/frontend`) providing the modern SUSPS UI.
+  - frontend/: Vite + React + Tailwind SPA (`src/frontend`) providing the SUSPS UI.
   - pipeline/: ingest, preprocess, synthetic, and S3 sync utilities
   - models/: deterministic helpers and lightweight stubs (growth/energy/traffic simulation, time-series, etc.) used by the backend; the UI now relies only on API endpoints rather than local demo stubs.
 - backend/: removed (Docker and container-only backend are not used for the final-year project)
@@ -77,7 +94,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 - data/: city-scoped outputs under `data/<CITY>/{raw,processed}` (default CITY=Nairobi)
 
 Notes
-- The Docker backend is maintained for DB-enabled E2E tests but reuses the same Dash UI as the unified API.
+- The Docker backend is maintained for DB-enabled E2E tests but reuses the same FastAPI API; it does not provide a separate UI.
 - Prefer src/backend/api.py for local and Render deployments.
 
 ### Feature: AI Advisory Engine (Hugging Face)
@@ -86,7 +103,7 @@ Notes
   - Backend endpoint `/advisory/{scope}` compiles recent predictions (DB → processed → synthetic), optionally scoped by `zone_id` (selected area), builds a compact summary, and queries a Hugging Face model for insights via the free Inference API.
   - The advisory engine now incorporates the selected `zone_id` into its prompt and cache key so guidance can be area-specific while remaining deterministic and cached.
   - Default model: `meta-llama/Meta-Llama-3.1-8B-Instruct` with a lightweight fallback `TinyLlama/TinyLlama-1.1B-Chat-v1.0` (free-tier friendly).
-  - The Dash UI shows an “Insights” panel on Dashboard, Growth, Energy, and Traffic pages that calls the advisory endpoint with the currently selected area (when available) and renders markdown.
+  - The React SPA shows an “Insights” panel on the Dashboard, Urban Growth, Energy, and Traffic pages that calls the advisory endpoint with the currently selected area (when available) and renders markdown.
 - Configuration:
   - Env vars: `HF_API_KEY` (preferred; see `.env`) or, if needed, `HF_API_TOKEN` / `HUGGINGFACEHUB_API_TOKEN`.
   - Optional: `HF_MODEL_NAME` to override the default advisory/chat model, plus specialized models
@@ -104,11 +121,11 @@ Notes
   3) Backend summarizes recent series and queries Hugging Face model
   4) Markdown insights are rendered under the page's "Insights" section with model and timestamp
 
-SUSPS is organized around a lightweight FastAPI app that mounts a Dash UI, plus an optional, database-enabled variant for local development with PostGIS.
+SUSPS is organized around a lightweight FastAPI API plus a separate React SPA frontend, with an optional, database-enabled variant for local development with PostGIS.
 
 - Web application (no-DB path used for dev/tests/deploy)
-  - Entrypoint: `src/backend/api.py` defines a FastAPI app with CORS, a `/health` endpoint, and a root redirect to `/dash/`.
-  - UI: `src/webapp/app.py` provides `create_dash_app(...)` (Dash + Bootstrap), mounted under `/dash` via `WSGIMiddleware`.
+  - Backend: `src/backend/api.py` defines a FastAPI app with CORS, a `/health` endpoint, and a root redirect to `/docs`.
+  - Frontend: `src/frontend` contains the Vite+React+Tailwind SPA. Run it with `npm run dev` (from `src/frontend`), pointing `VITE_API_BASE_URL` at the FastAPI backend.
   - Deployment: Render uses `Procfile` and `render.yaml` to run `gunicorn` with Uvicorn workers; health is `/health`.
 
 - Data pipeline (file-based artifacts)
@@ -116,13 +133,14 @@ SUSPS is organized around a lightweight FastAPI app that mounts a Dash UI, plus 
 
 
 - Tests
-  - `tests/test_api.py` exercises the no-DB FastAPI app’s `/health` endpoint using `httpx.AsyncClient`.
-  - `tests/test_app.py` validates that the Dash app is constructible with the expected title.
-  - `tests/test_models.py` is a placeholder that imports `src.backend.models` (this package is not implemented under `src/` yet).
+  - API and advisory: `tests/test_api.py`, `tests/test_simulation_api.py`, `tests/test_ts_forecast_api.py`, `tests/test_hotspots_api.py`, `tests/test_hotspots_forecast_api.py`.
+  - Pipeline: `tests/test_pipeline.py` runs ingest → preprocess → synthetic → fairness in a temporary data directory.
+  - DB/E2E: `tests/test_db_endpoints.py` (skipped unless `E2E_DOCKER=1`) checks DB-backed `/energy`, `/traffic`, and summary endpoints.
+  - Basic package check: `tests/test_models.py` imports `src.backend.models`.
 
 Key URLs
 - Health: `/health`
-- Dash (legacy UI): `/dash/`
+- Backend docs: `/docs` (FastAPI/Swagger UI)
 - React frontend (local dev): `http://localhost:5173` (Vite dev server; see `src/frontend`)
 - Core data: `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary`, `/config` (GET/POST)
 - Areas & metadata: `/areas`, `/processed_data`, `/simulation_inputs`
@@ -133,7 +151,7 @@ Key URLs
 
 ### Frontend map for agents (what each page talks to)
 
-- Dashboard (`/dash/` root)
+- Dashboard (React route `/dashboard`)
   - Sidebar: `area-select` dropdown populated from `/areas`. No data is loaded into the main charts until an area is selected.
   - Charts: growth, energy, traffic, plus summary tiles; use `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary`.
   - Behavior: when no area is selected, graphs render placeholder figures with "(select an area)" in the title and the page shows descriptive text only; once an area is selected, charts call the live API endpoints (which internally prefer DB/processed data with synthetic fallback as needed).
@@ -190,11 +208,6 @@ Examples (API responses, truncated):
   - Added hotspot preprocessing in the pipeline (`preprocess_hotspots`, `preprocess_hotspots_forecast`) and endpoints `/hotspots/areas` and `/hotspots/areas/forecast`.
   - Added DB-oriented metadata endpoints `/areas`, `/processed_data`, `/simulation_inputs` and a portable schema dump at `src/backend/db/susps_schema_dump.sql`.
 
-- Frontend (Dash)
-  - Reworked layout to use a sidebar `area-select` dropdown populated from `/areas`.
-  - Removed the demo vs API data-source toggle; the UI now always calls the real API endpoints and only shows data once an area is selected, otherwise showing descriptive placeholders.
-  - Advisory "Insights" panels are now gated on area selection and continue to use the Hugging Face-powered backend.
-
 - Frontend (React + Tailwind under `src/frontend`)
   - Scaffolded a Vite+React+TypeScript+Tailwind SPA with pages for Dashboard, Urban Growth, Energy, and Traffic.
   - Implemented an area-driven sidebar wired to `/areas` with live search, suggestions, and selection, and lifted `selectedArea` state into `App`.
@@ -227,13 +240,12 @@ Local workflow (uses `.env` paths + local DB)
    python -m src.pipeline.ingest
    python -m src.pipeline.preprocess
    ```
-2. Load processed into Postgres (today by default):
+2. Load processed into Postgres:
    ```bash
-   # Ensure LOCAL_DATABASE_URL is set in .env and Postgres is running
-   $env:DATABASE_URL="postgresql+psycopg2://postgres@localhost:5432/susps_db_local"
-   python -m backend.app.etl.load_processed_to_db --date (Get-Date).ToString('yyyy-MM-dd')
+   # Ensure USE_LOCAL_DB=true and LOCAL_DATABASE_URL are set in .env and Postgres is running
+   python -m src.backend.db.seed_from_processed
    ```
-3. Run the unified API + Dash (defaults to API data):
+3. Run the FastAPI backend:
    ```bash
    uvicorn src.backend.api:app --reload
    ```
@@ -278,5 +290,5 @@ Dashboard defaults (area-driven)
 - Traffic summary: DB → grouped by area (predicted/actual); processed → hourly averages.
 
 Operational notes
-- After changing local `data/<CITY>/raw/`, run `s3_sync --check/--push` to upload diffs, then on Render either temporarily set `DB_BOOTSTRAP_ON_START=1` and redeploy, or run `python -m backend.app.etl.bootstrap_db` in a Render shell to regenerate processed artifacts and refresh the DB.
+- After changing local `data/<CITY>/raw/`, run `s3_sync --check/--push` to upload diffs, then on Render temporarily set `DB_BOOTSTRAP_ON_START=1` and redeploy so the service reruns ingest, preprocess, and DB seeding.
 - Keep secrets (DB and AWS) only in environment variables; `.env` remains uncommitted.

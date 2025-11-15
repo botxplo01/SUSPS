@@ -6,6 +6,7 @@ import { Table } from "../components/Table";
 import { BarChart } from "../components/BarChart";
 import { HotspotMap } from "../components/Map";
 import { InsightsSection } from "../components/InsightsSection";
+import { FormattedInsights } from "../components/FormattedInsights";
 import { ActionToggle } from "../components/ActionToggle";
 import type { Area, Mode } from "../types";
 import { useAdvisory } from "../hooks/useAdvisory";
@@ -77,7 +78,13 @@ export function UrbanGrowthPage({ selectedArea }: UrbanGrowthPageProps) {
       />
 
       <div className="grid gap-4 md:grid-cols-2">
-        <BarChart title="Population Growth" data={chartPoints} />
+        <BarChart
+          title="Population Growth"
+          data={chartPoints}
+          accentColor="#91e03f"
+          xLabel="Year"
+          yLabel="Population"
+        />
         <HotspotMap optimize={optimize} zoneId={selectedArea?.name ?? null} />
       </div>
 
@@ -103,9 +110,7 @@ export function UrbanGrowthPage({ selectedArea }: UrbanGrowthPageProps) {
           <p className="text-red-600 text-sm">{error}</p>
         )}
         {selectedArea && !loading && !error && insights && (
-          <pre className="whitespace-pre-wrap text-sm text-gray-800">
-            {insights}
-          </pre>
+          <FormattedInsights text={insights} />
         )}
         {selectedArea && optimize && (
           <p className="mt-2 text-xs text-emerald-700">

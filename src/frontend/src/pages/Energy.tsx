@@ -7,6 +7,7 @@ import { LineChart } from "../components/LineChart";
 import { HotspotMap } from "../components/Map";
 import { InsightsSection } from "../components/InsightsSection";
 import { ActionToggle } from "../components/ActionToggle";
+import { FormattedInsights } from "../components/FormattedInsights";
 import type { Area, Mode } from "../types";
 import { useAdvisory } from "../hooks/useAdvisory";
 import { useEnergySeries } from "../hooks/useSeries";
@@ -132,7 +133,13 @@ export function EnergyPage({ selectedArea }: EnergyPageProps) {
       />
 
       <div className="grid gap-4 md:grid-cols-2">
-        <LineChart title="Energy Consumption" data={chartPoints} />
+        <LineChart
+          title="Energy Consumption"
+          data={chartPoints}
+          accentColor="#f87b14"
+          xLabel="Hour of day"
+          yLabel="Demand (MWh)"
+        />
         <HotspotMap optimize={optimize} zoneId={selectedArea?.name ?? null} />
       </div>
 
@@ -155,9 +162,7 @@ export function EnergyPage({ selectedArea }: EnergyPageProps) {
           <p className="text-red-600 text-sm">{error}</p>
         )}
         {selectedArea && !loading && !error && insights && (
-          <pre className="whitespace-pre-wrap text-sm text-gray-800">
-            {insights}
-          </pre>
+          <FormattedInsights text={insights} />
         )}
         {selectedArea && optimize && (
           <p className="mt-2 text-xs text-emerald-700">

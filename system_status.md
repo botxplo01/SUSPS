@@ -10,12 +10,20 @@ This document summarizes the current state of the SUSPS repository: what’s don
   - AI advisory endpoints (`/advisory/{scope}`, `/advisory_batch`) are wired to free Hugging Face models via `HF_API_KEY` with caching and graceful degradation.
 - Pipeline and data layout: API-first ingestion writes to `data/<CITY>/raw/` (OpenWeather default, Open‑Meteo optional; OpenAQ; TomTom). Preprocess writes to `data/<CITY>/processed/` (environment_features, energy_features, traffic_features, air_quality_daily, hotspot CSVs). Census and precomputed growth forecast (`growth_forecast_city.csv`) plus Urban_Growth features remain integrated.
 - Storage and environments: Local runs with a local PostgreSQL instance plus file-based data under `data/<CITY>/{raw,processed}`; Render runs against managed PostgreSQL and AWS S3 bucket `susps-raw-data` (region `eu-north-1`) holding the same raw datasets. `src/pipeline.s3_sync` keeps local `data/<CITY>/raw/` and S3 in sync so results match between local and Render.
-- Frontend (React + Tailwind, `src/frontend`): Vite+React+TypeScript+Tailwind SPA with Dashboard, Urban Growth, Energy, and Traffic pages; area selection is wired via a fixed left sidebar backed by `/areas` (Montserrat typography, larger nav icons, and a rail-style active highlight with a teal left border), with a mobile hamburger and icon-only collapsed mode on desktop; REAL and SIMULATE modes are wired on the domain pages using `/growth`, `/energy`, `/traffic`, and `/simulate/run`; advisory content is loaded via `/advisory/{scope}` and rendered in frosted-glass "Insights" panels with a galaxy-style icon; an OSM-based hotspot map overlays `/hotspots/areas` and `/hotspots/areas/forecast`, showing dense population, congestion, and inefficient energy usage in soft translucent red and potential optimal zones in soft translucent green when Optimize is active; and the layout includes a sticky blurred page header with gradient titles/icons, a mobile-visible Sign out button, and a persistent slightly darker footer strip describing SUSPS and attribution.
+- Frontend (React + Tailwind, `src/frontend`): Vite+React+TypeScript+Tailwind SPA with Dashboard, Urban Growth, Energy, and Traffic pages; area selection is wired via a fixed left sidebar backed by `/areas` (Montserrat typography, larger nav icons, and a rail-style active highlight with a teal left border), with a mobile hamburger and icon-only collapsed mode on desktop; REAL and SIMULATE modes are wired on the domain pages using `/growth`, `/energy`, `/traffic`, and `/simulate/run`; advisory content is loaded via `/advisory/{scope}` and rendered in frosted-glass "Insights" panels with a galaxy-style icon; an OSM-based hotspot map overlays `/hotspots/areas` and `/hotspots/areas/forecast`, showing dense population, congestion, and inefficient energy usage in soft translucent red and potential optimal zones in soft translucent green when Optimize is active; and the layout includes a sticky blurred page header with gradient titles/icons, a mobile-visible Sign out button, and a persistent slightly darker footer strip describing SUSPS and attribution. The legacy Dash UI has been removed; all new work and demos should use the React SPA.
 - Docs: WARP.md and README document the local+Render parity story (Postgres + S3), backend capabilities (simulation, time-series, hotspots), and the React area-driven frontend; this status doc reflects that.
+
+## Quick start (local full stack)
+- Python deps: create a virtualenv, install `requirements.txt`, and ensure `.env` at least sets `CITY=Nairobi` (defaults are fine for demo).
+- Optional DB: start local PostgreSQL and set `USE_LOCAL_DB=true` and `LOCAL_DATABASE_URL` in `.env`.
+- Pipeline: run `python -m src.pipeline.ingest` then `python -m src.pipeline.preprocess` to populate `data/<CITY>/{raw,processed}`.
+- If using DB: run `python -m src.backend.db.seed_from_processed` to load processed artifacts into `energy_consumption` and `traffic_flow`.
+- Backend: run `uvicorn src.backend.api:app --reload` (check `/health`, explore `/docs`).
+- Frontend: from `src/frontend`, run `npm install` (first time) then `npm run dev` and open `http://localhost:5173` (React SPA calls the FastAPI backend via `VITE_API_BASE_URL`).
 
 ## 1) What’s implemented
 
-### Frontend map (pages  endpoints  data flow  advisory)
+### Frontend map (pages, endpoints, data flow, advisory)
 
 - Dashboard
   - Endpoints: `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary`, `/advisory/dashboard`.
@@ -37,8 +45,8 @@ This document summarizes the current state of the SUSPS repository: what’s don
   - Endpoints: `/hotspots/areas`, `/hotspots/areas/forecast`.
   - Behavior: React frontend renders an OpenStreetMap-based Leaflet map that overlays hotspot scores as soft translucent red circles; when Optimize is active, improving areas (based on forecast vs current scores) are highlighted in soft translucent green as potential optimal zones, with a small derived "optimal zones" list displayed next to the map. Joining these scores with ward/zone GeoJSON to render choropleth polygons remains a future enhancement; the current implementation uses a simple radial layout around the city center.
 
-|- App structure
-|  - FastAPI API for both local and Render: `src/backend/api.py`, with CORS and endpoints such as `/health`, `/growth`, `/energy`, and `/traffic`.
+- App structure
+  - FastAPI API for both local and Render: `src/backend/api.py`, with CORS and endpoints such as `/health`, `/growth`, `/energy`, and `/traffic`.
   - Database support: the unified app can run purely file-based or connect to PostgreSQL (local or Render-managed) when `USE_LOCAL_DB=true` or `USE_DB=1` and a `DATABASE_URL` is provided.
   - Legacy Docker/PostGIS stack under `backend/` is retained for optional DB experiments/E2E tests but is not required for the final-year project.
 - Demo/API features (unified app)
@@ -53,20 +61,20 @@ This document summarizes the current state of the SUSPS repository: what’s don
   - Ruff, Black, Mypy (local + CI); pre-commit hooks (Ruff/Black/Mypy).
   - GitHub Actions runs lint, format check, typecheck, and tests with coverage.
   - `pytest.ini` added to set `pythonpath = .` and default asyncio loop scope.
-  - Replaced Starlette's deprecated WSGIMiddleware with `a2wsgi.WSGIMiddleware` to remove warnings.
+  - Removed the legacy Dash WSGI bridge and `a2wsgi` dependency; the FastAPI app now serves API endpoints only, and the React SPA is a separate client.
   - WARP.md created and updated with common commands, environment parity, and architecture overview.
 
 ## 2) What remains (near-term)
 
-- Frontend: complete React migration and area-driven behavior (Dash removed)
+- Frontend: polish React area-driven behavior and hotspot/optimal-zone UX (Dash has been removed)
   - Polish SIMULATE mode flows in the React UI (e.g., consider surfacing `/ts/forecast` where appropriate and refine parameter controls on the Urban Growth, Energy, and Traffic pages that already call `/simulate/run`).
   - Evolve the React map from the current OSM-based hotspot overlays into proper ward/zone-based choropleths by joining `/hotspots/areas` and `/hotspots/areas/forecast` with GeoJSON geometries.
   - Optionally surface additional summary views on the React Dashboard by aggregating growth/energy/traffic series or using `/energy/summary` and `/traffic/summary` once area filtering is in place.
-  - Consider adding an explicit "optimal zones" list next to the hotspot map and refining advisory copy to reference these green optimal zones when Optimize is active.
-  - Ensure that when no area is selected in React, each page shows only descriptive content and placeholder visuals, matching the existing Dash behavior.
+  - Refine the existing "optimal zones" list next to the hotspot map and advisory copy that references these green optimal zones when Optimize is active.
+  - Ensure new pages continue the pattern where, if no area is selected, they show only descriptive content and placeholder visuals.
 - Backend/frontend integration
   - Extend core endpoints (`/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary`) to accept an `area_id` (or similar) and filter results accordingly.
-  - Ensure both Dash and React clients pass the selected area into these endpoints and clearly indicate which area the charts and advisory refer to.
+  - Ensure the React client passes the selected area into these endpoints and clearly indicates which area the charts and advisory refer to.
 - Models + pipeline integration
   - Growth: continue to rely on processed and census data (`growth_forecast_city.csv` etc.) for `/growth`; optionally surface per-area growth allocations derived from worldpop/socioeconomic features.
   - Energy: optionally expose sector-level summary via an endpoint (e.g., `/energy/sector-summary`) if added, and pair it with a dedicated chart.
@@ -84,9 +92,9 @@ This document summarizes the current state of the SUSPS repository: what’s don
 ## 3) End-state (target architecture)
 
 - Frontend (React)
--  - React + Tailwind SPA for demo and API-backed visualizations without DB
--  - Optional Docker/local builds for DB-backed exploration with PostGIS
--  - Clear environment-driven toggles for data sources; ability to run side-by-side
+  - React + Tailwind SPA for demo and API-backed visualizations without DB.
+  - Optional Docker/local builds for DB-backed exploration with PostGIS.
+  - Clear environment-driven toggles for data sources; ability to run side-by-side.
 - API (FastAPI)
   - Render: stateless demo endpoints, lightweight transformation endpoints
   - Docker: CRUD + analytics endpoints backed by Postgres/PostGIS; Alembic-managed schema
@@ -136,9 +144,9 @@ Milestone M3  Area-driven frontend & hotspot maps (IN PROGRESS)
   - Implemented an OSM-based hotspot map in the React frontend that overlays `/hotspots/areas` and `/hotspots/areas/forecast`, with dense/problematic areas shown in soft translucent red and improving areas highlighted in soft translucent green when Optimize is active.
 - Pending:
   - Extend `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary` to accept `area_id` (or equivalent) and filter appropriately.
-- Ensure the React UI passes the selected area into these endpoints and reflects the selected area clearly in the UI.
--  - Replace the current radial hotspot layout with ward/zone-based choropleths by joining `/hotspots/areas` and `/hotspots/areas/forecast` with GeoJSON geometries in the React UI.
--  - Ensure that when no area is selected, each page shows only descriptive content and placeholder charts/maps.
+  - Ensure the React UI passes the selected area into these endpoints and reflects the selected area clearly in the UI.
+  - Replace the current radial hotspot layout with ward/zone-based choropleths by joining `/hotspots/areas` and `/hotspots/areas/forecast` with GeoJSON geometries in the React UI.
+  - Ensure that when no area is selected, each page shows only descriptive content and placeholder charts/maps.
 
 Milestone M4  UX polish, simulation & forecasting surfaces
 - Refine the SIMULATE UI in React (existing sliders/inputs on Growth, Energy, and Traffic pages calling `/simulate/run`) and ensure results and advisory copy are easy to interpret.
@@ -160,9 +168,9 @@ Exit criteria (definition of done)
 ## 5) Acceptance criteria (baseline)
 
 - Render app
--  - `/health` returns OK; the React app renders pages with the sidebar area selection.
--  - With no area selected, pages show descriptive content and placeholder charts only.
--  - After selecting an area, `/growth`, `/energy`, `/traffic`, summaries, hotspots, and advisory endpoints return structured data and charts/advisory render without errors.
+  - `/health` returns OK; the React app renders pages with the sidebar area selection.
+  - With no area selected, pages show descriptive content and placeholder charts only.
+  - After selecting an area, `/growth`, `/energy`, `/traffic`, summaries, hotspots, and advisory endpoints return structured data and charts/advisory render without errors.
 - Docker/local DB app (if used)
   - Migrations or schema application succeeds; seed scripts (if any) succeed; `/areas` is non-empty; `/energy/summary` and `/traffic/summary` return items where data is present.
 - CI

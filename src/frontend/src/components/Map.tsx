@@ -129,7 +129,7 @@ export function HotspotMap({ optimize = false, zoneId }: MapProps) {
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
-        <div className="relative h-64 overflow-hidden rounded-lg shadow-inner">
+        <div className="relative h-80 overflow-hidden rounded-lg shadow-inner">
           <MapContainer
             center={DEFAULT_CENTER}
             zoom={DEFAULT_ZOOM}

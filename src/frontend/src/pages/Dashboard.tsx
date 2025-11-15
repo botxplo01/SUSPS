@@ -4,6 +4,7 @@ import { LineChart } from "../components/LineChart";
 import { BarChart } from "../components/BarChart";
 import { HotspotMap } from "../components/Map";
 import { InsightsSection } from "../components/InsightsSection";
+import { FormattedInsights } from "../components/FormattedInsights";
 import type { Area } from "../types";
 import { useAdvisory } from "../hooks/useAdvisory";
 import { useGrowthSeries, useEnergySeries, useTrafficSeries } from "../hooks/useSeries";
@@ -41,12 +42,30 @@ export function DashboardPage({ selectedArea }: DashboardPageProps) {
       </DescriptionSection>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <BarChart title="Urban Growth Summary" data={growthPoints} />
-        <BarChart title="Energy Summary" data={energyPoints} />
+        <BarChart
+          title="Urban Growth Summary"
+          data={growthPoints}
+          accentColor="#91e03f"
+          xLabel="Year"
+          yLabel="Population"
+        />
+        <BarChart
+          title="Energy Summary"
+          data={energyPoints}
+          accentColor="#f87b14"
+          xLabel="Hour of day"
+          yLabel="Demand (MWh)"
+        />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <LineChart title="Traffic Summary" data={trafficPoints} />
+        <LineChart
+          title="Traffic Summary"
+          data={trafficPoints}
+          accentColor="#f24152"
+          xLabel="Hour of day"
+          yLabel="Volume (veh/hr)"
+        />
         <HotspotMap zoneId={selectedArea?.name ?? null} />
       </div>
 
@@ -62,9 +81,7 @@ export function DashboardPage({ selectedArea }: DashboardPageProps) {
           <p className="text-red-600 text-sm">{error}</p>
         )}
         {selectedArea && !loading && !error && insights && (
-          <pre className="whitespace-pre-wrap text-sm text-gray-800">
-            {insights}
-          </pre>
+          <FormattedInsights text={insights} />
         )}
       </InsightsSection>
     </div>
