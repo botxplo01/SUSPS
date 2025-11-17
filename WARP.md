@@ -72,7 +72,10 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 - Open `http://localhost:5173`, ensure `VITE_API_BASE_URL` points at the backend (default `http://127.0.0.1:8000`), and select "Nairobi" in the sidebar to load data.
 
 ### Option B – With local Postgres (DB-backed API)
-- Start PostgreSQL and set `USE_LOCAL_DB=true` and `LOCAL_DATABASE_URL` in `.env`.
+- Start PostgreSQL and create a local database (e.g. `susps`) and user (e.g. `susps_user`).
+  - Example (psql): `CREATE DATABASE susps OWNER susps_user;`
+  - Apply the schema dump once to initialize tables: `psql -U susps_user -d susps -f src/backend/db/susps_schema_dump.sql`.
+- Set `USE_LOCAL_DB=true` and `LOCAL_DATABASE_URL` in `.env` (e.g. `postgresql+psycopg2://susps_user:password@localhost:5432/susps`).
 - Generate processed artifacts and seed the DB:
   ```bash
   python -m src.pipeline.ingest
@@ -103,7 +106,7 @@ Notes
   - Backend endpoint `/advisory/{scope}` compiles recent predictions (DB → processed → synthetic), optionally scoped by `zone_id` (selected area), builds a compact summary, and queries a Hugging Face model for insights via the free Inference API.
   - The advisory engine now incorporates the selected `zone_id` into its prompt and cache key so guidance can be area-specific while remaining deterministic and cached.
   - Default model: `meta-llama/Meta-Llama-3.1-8B-Instruct` with a lightweight fallback `TinyLlama/TinyLlama-1.1B-Chat-v1.0` (free-tier friendly).
-  - The React SPA shows an “Insights” panel on the Dashboard, Urban Growth, Energy, and Traffic pages that calls the advisory endpoint with the currently selected area (when available) and renders formatted plain-text paragraphs (markdown syntax stripped) with only key headings bolded.
+  - The React SPA shows an "AI Analysis & Insights" panel on the Dashboard, Urban Growth, Energy, and Traffic pages that calls the advisory endpoint with the currently selected area (when available) and renders formatted plain-text paragraphs (markdown syntax stripped) via a `FormattedInsights` component, which drops redundant "Insights" headings/underlines and highlights the main title, profile headings (e.g. Energy Profile, Traffic Profile, Growth in Population), and "Recommended Actions" / Short-/Medium-/Long-term sections.
 - Configuration:
   - Env vars: `HF_API_KEY` (preferred; see `.env`) or, if needed, `HF_API_TOKEN` / `HUGGINGFACEHUB_API_TOKEN`.
   - Optional: `HF_MODEL_NAME` to override the default advisory/chat model, plus specialized models
@@ -119,7 +122,7 @@ Notes
   1) Generate predictions (API or DB-backed)
   2) UI/page loads and calls `/advisory/{scope}` (or `/advisory_batch` for multiple scopes)
   3) Backend summarizes recent series and queries Hugging Face model
-  4) Markdown insights are rendered under the page's "Insights" section with model and timestamp
+  4) Markdown-style insights are rendered inside the page's "AI Analysis & Insights" card with headings/profile sections emphasized by `FormattedInsights`.
 
 SUSPS is organized around a lightweight FastAPI API plus a separate React SPA frontend, with an optional, database-enabled variant for local development with PostGIS.
 
@@ -129,8 +132,10 @@ SUSPS is organized around a lightweight FastAPI API plus a separate React SPA fr
   - Deployment: Render uses `Procfile` and `render.yaml` to run `gunicorn` with Uvicorn workers; health is `/health`.
 
 - Data pipeline (file-based artifacts)
-  - Modules under `src/pipeline/` generate small CSV artifacts to `data/<CITY>/raw/` and `data/<CITY>/processed/`. Paths are centralized in `src/pipeline/config.py` and created on demand. External dataset locations are read from environment variables when provided.
-  - Overpass/OSM integration: `src/pipeline/osm_overpass.py` provides a small Overpass client (bbox, named area, polygon) that returns GeoJSON. `src/pipeline/ingest.py` can optionally call this client and persist an `osm_snapshot.geojson` into `data/<CITY>/raw/` when `SUSPS_FETCH_OSM=1` (disabled by default so tests and local runs remain offline and deterministic).
+-  - Modules under `src/pipeline/` generate small CSV artifacts to `data/<CITY>/raw/` and `data/<CITY>/processed/`. Paths are centralized in `src/pipeline/config.py` and created on demand. Raw artifacts are grouped into domain-specific subfolders (e.g., `data/Nairobi/raw/Demographics_and_Population/worldpop_summary.csv`, `.../Energy_and_Infrastructure/energy_demand.csv`, `.../Environmental_and_Climate/environment_monthly.csv`, `.../Mobility_and_Transport/traffic_flows.csv`), while processed artifacts remain flat under `data/<CITY>/processed/`. External dataset locations (including GRID3 settlements, MATATUS, OSM, and census CSVs) are read from environment variables when provided.
+-  - Daily/Monthly ingest: `src/pipeline/ingest.py` pulls WorldPop/energy CSVs, **live TomTom traffic flows** (when `TOMTOM_API_KEY` and `TRAFFIC_PROVIDER=tomtom` are set), **live weather** (OpenWeather/Open‑Meteo controlled by `WEATHER_PROVIDER`), and **live air quality** (OpenAQ via `OPEN_AQ_API_KEY`, with a fallback to `Air_Quality_Data_2025.csv` under `Environmental_and_Climate`), writing `worldpop_summary.csv`, `energy_demand.csv`, `traffic_flows.csv`, `environment_monthly.csv`, `air_quality_raw.csv` (when available), and `socioeconomic.csv` into their respective domain subfolders beneath `data/<CITY>/raw/`.
+-  - Processing: `src/pipeline/preprocess.py` creates `traffic_features.csv` and a MATATUS/OSM-enriched `traffic_enriched_features.csv`, `environment_features.csv` and a fused `environment_aq_features.csv` (weather + AQ + pollution_index), `air_quality_daily.csv`, `worldpop_features.csv`, socio-economic features, deterministic `hotspots_areas.csv` / `hotspots_areas_forecast.csv` used for optimal zones, and additional summary tables that ensure all curated raw datasets are used: `demographic_raster_summary.csv` (population TIFFs under `Demographics_and_Population`), `landcover_raster_summary.csv` (land-cover TIFFs under `Environmental_and_Climate`), `mobility_gis_layers.csv` (layers inside `Mobility_and_Transport/GIS_DATA_2019.zip`), and optional `urban_growth_catalog.csv` / `urban_growth_features.csv` when `GRID3_SETTLEMENTS_PATH` / `SETTLEMENTS_PATH` is configured.
+-  - Overpass/OSM integration: `src/pipeline/osm_overpass.py` provides a small Overpass client (bbox, named area, polygon) that returns GeoJSON. `src/pipeline/ingest.py` can optionally call this client and persist an `osm_snapshot.geojson` into `data/<CITY>/raw/` (grouped under the appropriate domain) when `SUSPS_FETCH_OSM=1` (disabled by default so tests and local runs remain offline and deterministic).
 
 
 - Tests
@@ -143,11 +148,12 @@ Key URLs
 - Health: `/health`
 - Backend docs: `/docs` (FastAPI/Swagger UI)
 - React frontend (local dev): `http://localhost:5173` (Vite dev server; see `src/frontend`)
-- Core data: `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary`, `/config` (GET/POST)
+- Core data: `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary`
 - Areas & metadata: `/areas`, `/processed_data`, `/simulation_inputs`
 - Simulation & time-series: `/simulate/run`, `/simulation_inputs` (POST), `/ts/forecast`
-- Hotspots: `/hotspots/areas`, `/hotspots/areas/forecast`
-- AI Advisory: `/advisory/{scope}` where `scope` ∈ {`dashboard`,`growth`,`energy`,`traffic`} (returns markdown-like insights that the frontend renders as plain paragraphs with key headings bolded). The endpoint accepts `zone_id` and optional `scenario` (e.g. `growth_baseline`, `growth_simulate`, `energy_demand_response`), which are included in the HF prompt and in the cache key so advisory can distinguish between baseline and SIMULATE scenarios.
+- Environment & air quality: `/environment/features`, `/air_quality/daily`
+- Hotspots: `/hotspots/areas`, `/hotspots/areas/forecast`, `/hotspots/scores`
+- AI Advisory: `/advisory/{scope}` where `scope` ∈ {`dashboard`,`growth`,`energy`,`traffic`} (returns markdown-like insights that the frontend renders as plain paragraphs with key headings bolded). The endpoint accepts `zone_id` and optional `scenario` (e.g. `growth_baseline`, `growth_simulate`, `energy_demand_response`), which are included in the HF prompt and in the cache key so advisory can distinguish between baseline and SIMULATE scenarios. The advisory engine now also summarizes processed **environment + air-quality features** (`environment_aq_features.csv`), **traffic_enriched_features.csv`** (TomTom + MATATUS + OSM context), and **hotspots_areas.csv`** (population/socio hotspots) and exposes these aggregates to the HF model so that AI Analysis & Insights can discuss pollution, enriched traffic context, and top hotspot admin units.
 - AI Advisory Batch: `/advisory_batch?scopes=dashboard,energy` (returns multiple scopes in one call)
 
 ### Frontend map for agents (what each page talks to)
@@ -176,7 +182,7 @@ Key URLs
 
 UI notes (Render):
 - The dashboard/sidebar includes an `area-select` dropdown populated from `/areas`. Until an area is selected, pages show descriptive content and placeholder charts only; once selected, the UI calls the real API endpoints for data (no Demo/API toggle in the UI).
-- `DEFAULT_DATA_SOURCE` in `.env` is legacy and only affects internal fallback behaviour in `/config`; new features should not depend on it.
+- The legacy `/config` endpoint and `DEFAULT_DATA_SOURCE` toggle have been removed; the backend always uses processed/DB data with deterministic fallbacks (no Demo/API switch).
 
 Examples (API responses, truncated):
 - `/growth`
@@ -198,19 +204,21 @@ Examples (API responses, truncated):
 - Location
   - CITY_LAT / CITY_LON (defaults to Nairobi CBD)
 - Raw and processed (local canonical layout)
-  - Ingest writes to `data/<CITY>/raw/`; preprocess writes to `data/<CITY>/processed/`.
-  - Growth forecast is precomputed to `data/<CITY>/processed/growth_forecast_city.csv` when census data is available.
+-  - Ingest writes canonical raw CSVs into domain-specific subfolders under `data/<CITY>/raw/` (e.g., `Demographics_and_Population/worldpop_summary.csv`, `Energy_and_Infrastructure/energy_demand.csv`, `Environmental_and_Climate/environment_monthly.csv`, `Mobility_and_Transport/traffic_flows.csv`, plus `socioeconomic.csv` in Demographics); preprocess writes all derived artifacts into `data/<CITY>/processed/`.
+-  - Growth forecast is precomputed to `data/<CITY>/processed/growth_forecast_city.csv` when census data is available, and summary tables such as `demographic_raster_summary.csv`, `landcover_raster_summary.csv`, `mobility_gis_layers.csv`, and `urban_growth_features.csv` ensure that all curated TIFF/ZIP/GRID3 datasets participate in the pipeline.
 - Storage and parity (local + Render)
   - Local: canonical datasets live under `data/<CITY>/{raw,processed}` and feed the local PostgreSQL instance when `USE_LOCAL_DB=true` (or equivalent env).
   - Render: uses managed PostgreSQL plus AWS S3 bucket `susps-raw-data` (region `eu-north-1`) to hold the same raw datasets.
   - Goal: keep local `data/<CITY>/raw/` and S3 `susps-raw-data/<CITY>/raw/` in sync so the frontend behaves identically locally and on Render.
-## Latest changes (2025-11-15)
+## Latest changes (2025-11-17)
 
 - Backend
   - Added deterministic SIMULATE engine and `/simulate/run` endpoint over existing growth/energy/traffic outputs.
   - Added generic time-series forecasting endpoint `/ts/forecast` using free Hugging Face models when configured, with deterministic fallbacks.
   - Added hotspot preprocessing in the pipeline (`preprocess_hotspots`, `preprocess_hotspots_forecast`) and endpoints `/hotspots/areas` and `/hotspots/areas/forecast`.
   - Added DB-oriented metadata endpoints `/areas`, `/processed_data`, `/simulation_inputs` and a portable schema dump at `src/backend/db/susps_schema_dump.sql`.
+  - Extended DB seeding (`src.backend.db.seed_from_processed`) to populate `environment_features`, `air_quality_daily`, and `hotspot_scores` from processed CSVs (`environment_aq_features.csv`, `air_quality_daily.csv`, and hotspot CSVs) so weather/air-quality and hotspot context is available in Postgres for future endpoints and analytics.
+  - Removed the legacy `/config` endpoint and `DEFAULT_DATA_SOURCE` toggle; the backend now always uses processed/DB data with deterministic fallbacks (no Demo/API switch).
 
 - Frontend (React + Tailwind under `src/frontend`)
   - Scaffolded a Vite+React+TypeScript+Tailwind SPA with pages for Dashboard, Urban Growth, Energy, and Traffic.
@@ -223,10 +231,10 @@ Examples (API responses, truncated):
 - Implemented SVG-based `BarChart`, `LineChart`, and `Histogram` components with axes, tick labels, light gridlines, and centered layout that display REAL growth, energy, and traffic series once an area is selected, using a unified title icon shape and page-specific accent colors (Urban Growth: bar chart, #91e03f; Energy: line chart, #f87b14; Traffic: histogram, #f24152; same mapping used on the dashboard summary charts).
 - Extended charts to support multiple overlaid series with a colour key legend for **Real**, **Predicted**, **Simulated**, and **Optimal** curves/bars; colours are coordinated across pages (Predicted: `#de3388`, Simulated: `#1b55ce`, Optimal: `#08c44d`, plus the existing per-domain REAL accents).
 - Wired REAL vs SIMULATE modes on the Urban Growth, Energy, and Traffic pages via a header `ModeToggle` (Real/Simulate) and a floating `ActionToggle` (Predict/Optimize/Simulate) that only highlights the chosen action and includes small click animations. The Simulate button is hidden in REAL mode and, when visible, triggers `/simulate/run` via `useSimulationSeries` only when clicked (no auto-run on mode switch), using page-specific parameters.
-- In REAL mode, clicking **Predict** computes a deterministic trend-based "Predicted" overlay from the current REAL series and displays it both in the charts and as bracketed values in the tables (e.g., `123,000 (130,000)` in `#de3388`). In SIMULATE mode, clicking **Simulate** overlays the SIMULATE series (in `#1b55ce`) similarly; when **Optimize** is active, an "Optimal" series is derived from REAL+SIMULATE and overlaid in `#08c44d`, with matching brackets in the tables; the simulation-parameter cards use a warm `#fffcf3` background to visually tie SIMULATE mode together.
+- In REAL mode, clicking **Predict** now calls the backend `/ts/forecast` endpoint to obtain an advanced forecast (using HF time-series models when configured, or a deterministic fallback otherwise) and uses this as the "Predicted" overlay and bracketed values in the tables (e.g., `123,000 (130,000)` in `#de3388`). In SIMULATE mode, clicking **Simulate** overlays the SIMULATE series (in `#1b55ce`) similarly; when **Optimize** is active, an "Optimal" series is derived from REAL+SIMULATE and overlaid in `#08c44d`, with matching brackets in the tables; the simulation-parameter cards use a warm `#fffcf3` background to visually tie SIMULATE mode together.
 - Implemented an OSM-based Leaflet map component that overlays `/hotspots/areas` and `/hotspots/areas/forecast`, showing dense population, congestion, and inefficient energy usage in soft translucent red regions and highlighting improving areas as soft translucent green "optimal zones" when Optimize is active; hooked this into a floating `ActionToggle` (Predict/Optimize/Simulate) positioned at the bottom-right with project-specified colors. A simple "optimal zones" concept exists today (green hotspots and a derived optimal-zones list), and advisory panels include contextual text that references these green zones when Optimize is active.
 - Added a sticky, blurred page header that enlarges and brightens the gradient page title and icon on scroll for better contrast over a semi-transparent black background, plus a small semantic icon per page (home, growth, energy, traffic), and a compact Sign out button that remains visible on mobile.
-- Added a frosted-glass "Insights" container on each page (with a galaxy-style icon) that renders advisory text via a `FormattedInsights` component (markdown syntax stripped, only the main headings such as "Urban Analytics Insights for…", "Recommended Actions", and "Short-term/Medium-term/Long-term" are bolded) and a persistent, slightly darker footer strip describing SUSPS and attribution (Developed by David Lameck).
+- Added a frosted-glass "AI Analysis & Insights" container on each page (with a gradient sparkle icon) that renders advisory text via a `FormattedInsights` component (markdown syntax stripped, redundant "Insights" headings/underlines removed, profile headings such as "Energy Profile", "Traffic Profile", "Growth in Population" plus "Recommended Actions" and Short-/Medium-/Long-term labels bolded) and a persistent, slightly darker footer strip describing SUSPS and attribution (Developed by David Lameck).
 
 - Environment parity
   - Confirmed the local vs Render story (local PostgreSQL + `data/<CITY>/{raw,processed}` vs Render PostgreSQL + S3 `susps-raw-data`) and S3 sync tooling as described below.

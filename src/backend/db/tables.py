@@ -8,6 +8,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    Date,
     DateTime,
     ForeignKey,
     Float,
@@ -171,3 +172,54 @@ class TrafficFlow(Base):
     predicted_volume = Column(Integer)
     actual_volume = Column(Integer)
     congestion_level = Column(Text)
+
+
+class EnvironmentFeature(Base):
+    """Monthly environment + air-quality features per area (optional).
+
+    Rows typically mirror environment_aq_features.csv and may be city-level
+    (area_id NULL) or area-specific when such mapping is available.
+    """
+
+    __tablename__ = "environment_features"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    area_id = Column(BigInteger, ForeignKey("areas.id"), nullable=True)
+    month = Column(Integer, nullable=False)
+    temp_c = Column(Float, nullable=True)
+    rain_mm = Column(Float, nullable=True)
+    cooling_deg = Column(Float, nullable=True)
+    wet_month = Column(Integer, nullable=True)
+    pm25 = Column(Float, nullable=True)
+    pm10 = Column(Float, nullable=True)
+    o3 = Column(Float, nullable=True)
+    pollution_index = Column(Float, nullable=True)
+
+
+class AirQualityDaily(Base):
+    """Daily air-quality aggregates (pm25/pm10/o3) per area (optional)."""
+
+    __tablename__ = "air_quality_daily"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    area_id = Column(BigInteger, ForeignKey("areas.id"), nullable=True)
+    date = Column(Date, nullable=False)
+    pm25 = Column(Float, nullable=True)
+    pm10 = Column(Float, nullable=True)
+    o3 = Column(Float, nullable=True)
+
+
+class HotspotScore(Base):
+    """Hotspot / optimal-zone scores derived from processed pipeline outputs."""
+
+    __tablename__ = "hotspot_scores"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    area_id = Column(BigInteger, ForeignKey("areas.id"), nullable=True)
+    admin_unit = Column(String(150), nullable=True)
+    year = Column(Integer, nullable=True)
+    population = Column(Float, nullable=True)
+    pop_share = Column(Float, nullable=True)
+    income_norm = Column(Float, nullable=True)
+    employment_score = Column(Float, nullable=True)
+    hotspot_score = Column(Float, nullable=True)

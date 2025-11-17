@@ -370,12 +370,22 @@ def fetch_air_quality() -> pd.DataFrame:
                 )
         return pd.DataFrame(rows)
     except Exception:
-        # Fallback to existing raw CSV if present
+        # Fallback to existing raw CSV if present (search RAW_DIR and
+        # Environmental_and_Climate subfolder).
         try:
-            p = config.RAW_DIR / "Air_Quality_Data_2025.csv"
-            if p.exists():
-                df = pd.read_csv(p)
-                return df
+            candidates = [
+                getattr(
+                    config,
+                    "ENVIRONMENT_RAW_DIR",
+                    config.RAW_DIR / "Environmental_and_Climate",
+                ),
+                config.RAW_DIR,
+            ]
+            for d in candidates:
+                p = Path(d) / "Air_Quality_Data_2025.csv"
+                if p.exists():
+                    df = pd.read_csv(p)
+                    return df
         except Exception:
             pass
         return pd.DataFrame([])
@@ -398,8 +408,26 @@ def fetch_socioeconomic() -> pd.DataFrame:
 
 
 def save_raw(df: pd.DataFrame, name: str) -> Path:
+    """Persist a raw CSV under the appropriate domain subfolder.
+
+    Generated raw files are grouped alongside their curated counterparts in
+    data/<CITY>/raw/<Domain>/ while remaining backward compatible when
+    domain hints are unavailable.
+    """
     config.ensure_dirs()
-    path = config.RAW_DIR / f"{name}.csv"
+
+    domain_map = {
+        "worldpop_summary": getattr(config, "DEMOGRAPHICS_RAW_DIR", config.RAW_DIR),
+        "energy_demand": getattr(config, "ENERGY_RAW_DIR", config.RAW_DIR),
+        "traffic_flows": getattr(config, "MOBILITY_RAW_DIR", config.RAW_DIR),
+        "environment_monthly": getattr(config, "ENVIRONMENT_RAW_DIR", config.RAW_DIR),
+        "air_quality_raw": getattr(config, "ENVIRONMENT_RAW_DIR", config.RAW_DIR),
+        "socioeconomic": getattr(config, "DEMOGRAPHICS_RAW_DIR", config.RAW_DIR),
+    }
+    base_dir = domain_map.get(name, config.RAW_DIR)
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    path = base_dir / f"{name}.csv"
     df.to_csv(path, index=False)
     return path
 

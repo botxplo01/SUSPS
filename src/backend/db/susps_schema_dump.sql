@@ -84,6 +84,44 @@ CREATE TABLE IF NOT EXISTS public.traffic_flow (
     congestion_level TEXT
 );
 
+-- Monthly environment + air-quality features (mirrors environment_aq_features.csv)
+CREATE TABLE IF NOT EXISTS public.environment_features (
+    id               BIGSERIAL PRIMARY KEY,
+    area_id          BIGINT REFERENCES public.areas(id) ON DELETE SET NULL,
+    month            INTEGER NOT NULL,
+    temp_c           DOUBLE PRECISION,
+    rain_mm          DOUBLE PRECISION,
+    cooling_deg      DOUBLE PRECISION,
+    wet_month        INTEGER,
+    pm25             DOUBLE PRECISION,
+    pm10             DOUBLE PRECISION,
+    o3               DOUBLE PRECISION,
+    pollution_index  DOUBLE PRECISION
+);
+
+-- Daily air quality aggregates (mirrors air_quality_daily.csv)
+CREATE TABLE IF NOT EXISTS public.air_quality_daily (
+    id      BIGSERIAL PRIMARY KEY,
+    area_id BIGINT REFERENCES public.areas(id) ON DELETE SET NULL,
+    date    DATE NOT NULL,
+    pm25    DOUBLE PRECISION,
+    pm10    DOUBLE PRECISION,
+    o3      DOUBLE PRECISION
+);
+
+-- Area-level hotspot / optimal-zone scores (mirrors hotspots_areas*.csv)
+CREATE TABLE IF NOT EXISTS public.hotspot_scores (
+    id               BIGSERIAL PRIMARY KEY,
+    area_id          BIGINT REFERENCES public.areas(id) ON DELETE SET NULL,
+    admin_unit       VARCHAR(150),
+    year             INTEGER,
+    population       DOUBLE PRECISION,
+    pop_share        DOUBLE PRECISION,
+    income_norm      DOUBLE PRECISION,
+    employment_score DOUBLE PRECISION,
+    hotspot_score    DOUBLE PRECISION
+);
+
 -- Helpful indexes for typical query patterns used in src/backend/api.py
 
 -- processed_data: filter by area/mode/category and list newest first
@@ -104,5 +142,20 @@ CREATE INDEX IF NOT EXISTS idx_energy_consumption_area_ts
 -- traffic_flow: recent series per area
 CREATE INDEX IF NOT EXISTS idx_traffic_flow_area_ts
     ON public.traffic_flow (area_id, ts DESC);
+
+-- environment_features: fast lookup by area/month
+CREATE INDEX IF NOT EXISTS idx_environment_features_area_month
+    ON public.environment_features (area_id, month);
+
+-- air_quality_daily: fast lookup by area/date
+CREATE INDEX IF NOT EXISTS idx_air_quality_daily_area_date
+    ON public.air_quality_daily (area_id, date);
+
+-- hotspot_scores: lookup by area/year and admin_unit
+CREATE INDEX IF NOT EXISTS idx_hotspot_scores_area_year
+    ON public.hotspot_scores (area_id, year);
+
+CREATE INDEX IF NOT EXISTS idx_hotspot_scores_admin_unit
+    ON public.hotspot_scores (admin_unit);
 
 COMMIT;

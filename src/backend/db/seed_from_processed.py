@@ -22,8 +22,18 @@ from typing import Iterable
 
 from sqlalchemy.exc import SQLAlchemyError
 
+import pandas as pd
+
 from src.backend.db.session import SessionLocal
-from src.backend.db.tables import UrbanArea, EnergyConsumption, TrafficFlow
+from src.backend.db.tables import (
+    UrbanArea,
+    Area,
+    EnergyConsumption,
+    TrafficFlow,
+    EnvironmentFeature,
+    AirQualityDaily,
+    HotspotScore,
+)
 from src.pipeline import config as _cfg
 from src.models.energy import (
     daily_profile as energy_profile_synthetic,
@@ -60,6 +70,31 @@ def _get_or_create_urban_area(session: SessionLocal) -> UrbanArea:
     session.commit()
     session.refresh(ua)
     return ua
+
+
+def _get_or_create_area(session: SessionLocal) -> Area:
+    """Return a canonical Area row, creating it if needed.
+
+    This is similar to _get_or_create_urban_area but targets the new `areas`
+    table, which is used by environment_features/air_quality_daily/hotspot_scores.
+    """
+
+    city = getattr(_cfg, "_CITY", None) or getattr(_cfg, "DATA_CITY", None) or "Nairobi"
+
+    ar = (
+        session.query(Area)
+        .filter(Area.name == city)
+        .order_by(Area.id.asc())
+        .first()
+    )
+    if ar is not None:
+        return ar
+
+    ar = Area(name=city, area_type="city")
+    session.add(ar)
+    session.commit()
+    session.refresh(ar)
+    return ar
 
 
 def _seed_energy_series(session: SessionLocal, area: UrbanArea) -> int:
@@ -162,6 +197,154 @@ def _seed_traffic_series(session: SessionLocal, area: UrbanArea) -> int:
     return len(rows)
 
 
+def _seed_environment_features(session: SessionLocal, area: Area) -> int:
+    """Seed environment_features from environment_aq_features.csv if empty.
+
+    This maps each row in environment_aq_features to EnvironmentFeature with
+    the given area_id. If the table already has rows, it does nothing.
+    """
+
+    existing = session.query(EnvironmentFeature).count()
+    if existing > 0:
+        return 0
+
+    env_path = _cfg.PROCESSED_DIR / "environment_aq_features.csv"
+    if not env_path.exists():
+        return 0
+
+    df = pd.read_csv(env_path)
+    if "month" not in df.columns:
+        return 0
+
+    rows: list[EnvironmentFeature] = []
+    for _, r in df.iterrows():
+        try:
+            month = int(r.get("month", 0))
+        except Exception:
+            continue
+        ef = EnvironmentFeature(
+            area_id=area.id,
+            month=month,
+            temp_c=float(r.get("temp_c")) if "temp_c" in df.columns else None,
+            rain_mm=float(r.get("rain_mm")) if "rain_mm" in df.columns else None,
+            cooling_deg=float(r.get("cooling_deg")) if "cooling_deg" in df.columns else None,
+            wet_month=int(r.get("wet_month")) if "wet_month" in df.columns else None,
+            pm25=float(r.get("pm25")) if "pm25" in df.columns else None,
+            pm10=float(r.get("pm10")) if "pm10" in df.columns else None,
+            o3=float(r.get("o3")) if "o3" in df.columns else None,
+            pollution_index=float(r.get("pollution_index")) if "pollution_index" in df.columns else None,
+        )
+        rows.append(ef)
+
+    if not rows:
+        return 0
+
+    for row in rows:
+        session.add(row)
+    session.commit()
+    return len(rows)
+
+
+def _seed_air_quality_daily(session: SessionLocal, area: Area) -> int:
+    """Seed air_quality_daily from air_quality_daily.csv if empty."""
+
+    existing = session.query(AirQualityDaily).count()
+    if existing > 0:
+        return 0
+
+    aq_path = _cfg.PROCESSED_DIR / "air_quality_daily.csv"
+    if not aq_path.exists():
+        return 0
+
+    df = pd.read_csv(aq_path)
+    if "date" not in df.columns:
+        return 0
+
+    df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
+
+    rows: list[AirQualityDaily] = []
+    for _, r in df.iterrows():
+        if not r["date"]:
+            continue
+        aq = AirQualityDaily(
+            area_id=area.id,
+            date=r["date"],
+            pm25=float(r.get("pm25")) if "pm25" in df.columns else None,
+            pm10=float(r.get("pm10")) if "pm10" in df.columns else None,
+            o3=float(r.get("o3")) if "o3" in df.columns else None,
+        )
+        rows.append(aq)
+
+    if not rows:
+        return 0
+
+    for row in rows:
+        session.add(row)
+    session.commit()
+    return len(rows)
+
+
+def _seed_hotspot_scores(session: SessionLocal, area: Area) -> int:
+    """Seed hotspot_scores from hotspots_areas.csv and hotspots_areas_forecast.csv.
+
+    This creates one HotspotScore per row in hotspots_areas (base year) and
+    hotspots_areas_forecast (future years), using the given area as a logical
+    anchor while preserving the admin_unit field.
+    """
+
+    existing = session.query(HotspotScore).count()
+    if existing > 0:
+        return 0
+
+    total_inserted = 0
+
+    # Base hotspots (no year column)
+    base_path = _cfg.PROCESSED_DIR / "hotspots_areas.csv"
+    if base_path.exists():
+        df = pd.read_csv(base_path)
+        for _, r in df.iterrows():
+            hs = HotspotScore(
+                area_id=area.id,
+                admin_unit=str(r.get("admin_unit")) if "admin_unit" in df.columns else None,
+                year=None,
+                population=float(r.get("population")) if "population" in df.columns else None,
+                pop_share=float(r.get("pop_share")) if "pop_share" in df.columns else None,
+                income_norm=float(r.get("income_norm")) if "income_norm" in df.columns else None,
+                employment_score=float(r.get("employment_score")) if "employment_score" in df.columns else None,
+                hotspot_score=float(r.get("hotspot_score")) if "hotspot_score" in df.columns else None,
+            )
+            session.add(hs)
+            total_inserted += 1
+
+    # Forecast hotspots (with year)
+    forecast_path = _cfg.PROCESSED_DIR / "hotspots_areas_forecast.csv"
+    if forecast_path.exists():
+        df = pd.read_csv(forecast_path)
+        for _, r in df.iterrows():
+            try:
+                year = int(r.get("year")) if "year" in df.columns else None
+            except Exception:
+                year = None
+            hs = HotspotScore(
+                area_id=area.id,
+                admin_unit=str(r.get("admin_unit")) if "admin_unit" in df.columns else None,
+                year=year,
+                population=float(r.get("population")) if "population" in df.columns else None,
+                pop_share=float(r.get("pop_share")) if "pop_share" in df.columns else None,
+                income_norm=float(r.get("income_norm")) if "income_norm" in df.columns else None,
+                employment_score=float(r.get("employment_score")) if "employment_score" in df.columns else None,
+                hotspot_score=float(r.get("hotspot_score")) if "hotspot_score" in df.columns else None,
+            )
+            session.add(hs)
+            total_inserted += 1
+
+    if total_inserted == 0:
+        return 0
+
+    session.commit()
+    return total_inserted
+
+
 def main() -> None:
     """Entry point used as a script.
 
@@ -175,15 +358,25 @@ def main() -> None:
 
     with SessionLocal() as session:  # type: ignore[call-arg]
         try:
-            area = _get_or_create_urban_area(session)
-            n_energy = _seed_energy_series(session, area)
-            n_traffic = _seed_traffic_series(session, area)
+            # Legacy urban_areas-backed time series
+            urban_area = _get_or_create_urban_area(session)
+            n_energy = _seed_energy_series(session, urban_area)
+            n_traffic = _seed_traffic_series(session, urban_area)
+
+            # New areas-backed environment/AQ/hotspot tables
+            area = _get_or_create_area(session)
+            n_env = _seed_environment_features(session, area)
+            n_aq = _seed_air_quality_daily(session, area)
+            n_hs = _seed_hotspot_scores(session, area)
         except SQLAlchemyError as e:  # pragma: no cover - defensive
             session.rollback()
             raise
 
     print(f"Seeded energy_consumption rows: {n_energy}")
     print(f"Seeded traffic_flow rows: {n_traffic}")
+    print(f"Seeded environment_features rows: {n_env}")
+    print(f"Seeded air_quality_daily rows: {n_aq}")
+    print(f"Seeded hotspot_scores rows: {n_hs}")
 
 
 if __name__ == "__main__":

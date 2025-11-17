@@ -8,14 +8,33 @@ import { HotspotMap } from "../components/Map";
 import { InsightsSection } from "../components/InsightsSection";
 import { ActionToggle } from "../components/ActionToggle";
 import { FormattedInsights } from "../components/FormattedInsights";
-import type { Area, Mode, ChartPoint, ChartSeries } from "../types";
+import { ExportDialog } from "../components/ExportDialog";
+import { postJson, postBinary, downloadBlob } from "../api";
+import type {
+  Area,
+  Mode,
+  ChartPoint,
+  ChartSeries,
+  ExportPayload,
+  ExportPage,
+  ExportFormat,
+} from "../types";
 import { useAdvisory } from "../hooks/useAdvisory";
 import { useEnergySeries } from "../hooks/useSeries";
 import { useSimulationSeries } from "../hooks/useSimulation";
 
 interface EnergyPageProps {
   selectedArea: Area | null;
+  onRegisterExporter?: (fn: () => void) => void;
 }
+
+type EnergyExportTarget =
+  | { kind: "page" }
+  | { kind: "chart"; id: "consumption" }
+  | { kind: "table"; id: "demand" };
+
+const EXPORT_FOOTER_TEXT =
+  "Smart Urban Simulation and Prediction System (SUSPS) — © 2025 Developed by David Lameck.";
 
 function getEnergyScenarioLabel(id: string): string {
   switch (id) {
@@ -79,7 +98,10 @@ function computeEnergyOptimal(real: ChartPoint[], sim: ChartPoint[]): ChartPoint
   return out;
 }
 
-export function EnergyPage({ selectedArea }: EnergyPageProps) {
+export function EnergyPage({
+  selectedArea,
+  onRegisterExporter,
+}: EnergyPageProps) {
   const [mode, setMode] = useState<Mode>("REAL");
   const [optimize, setOptimize] = useState(false);
   const [simulateRun, setSimulateRun] = useState(0);
@@ -90,7 +112,13 @@ export function EnergyPage({ selectedArea }: EnergyPageProps) {
   const [flattenRatio, setFlattenRatio] = useState<number>(0);
   const [scenarioId, setScenarioId] = useState<string>("energy_baseline");
   const [predictedEnergy, setPredictedEnergy] = useState<ChartPoint[]>([]);
+  const [predicting, setPredicting] = useState(false);
+  const [predictError, setPredictError] = useState<string | null>(null);
   const [optimalEnergy, setOptimalEnergy] = useState<ChartPoint[]>([]);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [exportTarget, setExportTarget] = useState<EnergyExportTarget | null>(
+    null,
+  );
   const zoneId = selectedArea ? selectedArea.name : null;
   const scenarioLabel = getEnergyScenarioLabel(scenarioId);
   const scenarioClass = getEnergyScenarioClass(scenarioId);
@@ -117,7 +145,65 @@ export function EnergyPage({ selectedArea }: EnergyPageProps) {
       runKey: simulateRun,
     },
   );
+
   const basePoints = energyPoints;
+
+  useEffect(() => {
+    if (!onRegisterExporter) return;
+    onRegisterExporter(() => {
+      setExportTarget({ kind: "page" });
+      setIsExportDialogOpen(true);
+    });
+  }, [onRegisterExporter]);
+
+  const runEnergyForecast = async () => {
+    setMode("REAL");
+    setOptimize(false);
+    setSimulateRun(0);
+    setPredictError(null);
+
+    if (!basePoints.length) {
+      setPredictedEnergy([]);
+      return;
+    }
+
+    setPredicting(true);
+    try {
+      const seriesPayload = basePoints.map((p) => ({ t: p.x, value: p.y }));
+      const data = await postJson<{
+        target: string;
+        items: { step: number; t: number; value: number }[];
+        used_model?: boolean;
+      }>("/ts/forecast", {
+        target: "energy",
+        series: seriesPayload,
+        horizon: seriesPayload.length,
+        use_model: true,
+      });
+      const items = data.items ?? [];
+      if (items.length) {
+        const trimmed = items.slice(0, basePoints.length);
+        const mapped: ChartPoint[] = trimmed.map((it, idx) => ({
+          x: basePoints[idx].x,
+          y: Number(it.value ?? 0),
+        }));
+        setPredictedEnergy(mapped);
+      } else {
+        setPredictedEnergy(computeEnergyTrend(basePoints));
+      }
+    } catch (err) {
+      setPredictError(
+        err instanceof Error ? err.message : "Failed to compute forecast.",
+      );
+      setPredictedEnergy(computeEnergyTrend(basePoints));
+    } finally {
+      setPredicting(false);
+    }
+  };
+
+  const handlePredictClick = () => {
+    void runEnergyForecast();
+  };
 
   useEffect(() => {
     if (mode === "SIMULATE" && optimize && basePoints.length && simulateEnergyPoints.length) {
@@ -141,6 +227,101 @@ export function EnergyPage({ selectedArea }: EnergyPageProps) {
   if (optimize && optimalEnergy.length === basePoints.length && optimalEnergy.length) {
     energySeries.push({ label: "Optimal", color: "#08c44d", points: optimalEnergy });
   }
+
+  const handleOpenFullExport = () => {
+    setExportTarget({ kind: "page" });
+    setIsExportDialogOpen(true);
+  };
+
+  const handleOpenTableExport = () => {
+    setExportTarget({ kind: "table", id: "demand" });
+    setIsExportDialogOpen(true);
+  };
+
+  const handleOpenChartExport = () => {
+    setExportTarget({ kind: "chart", id: "consumption" });
+    setIsExportDialogOpen(true);
+  };
+
+  const buildExportPage = (target: EnergyExportTarget): ExportPage => {
+    const areaName = selectedArea?.name ?? "No area selected";
+    const description = selectedArea
+      ? `Energy module for ${selectedArea.name} in ${mode} mode.`
+      : "Energy module showing baseline hourly demand profile.";
+    const insightsText =
+      selectedArea && !loading && !error && insights ? insights : undefined;
+
+    const tables =
+      target.kind === "chart"
+        ? []
+        : [
+            {
+              title: "Hourly energy demand",
+              columns: ["Hour", "Demand (MWh)"],
+              rows:
+                basePoints && basePoints.length
+                  ? basePoints.map((p) => [
+                      String(p.x),
+                      p.y.toFixed(2),
+                    ])
+                  : [["—", "—"]],
+            },
+          ];
+
+    const charts =
+      target.kind === "table"
+        ? []
+        : [
+            {
+              title: "Energy Consumption",
+              x_label: "Hour of day",
+              y_label: "Demand (MWh)",
+              series: energySeries.map((s) => ({
+                label: s.label,
+                points: s.points,
+              })),
+            },
+          ];
+
+    return {
+      page_name: "Energy",
+      mode,
+      area_name: areaName,
+      area_id: selectedArea?.id ?? null,
+      description,
+      insights: insightsText,
+      tables,
+      charts,
+    };
+  };
+
+  const handleConfirmExport = async (format: ExportFormat) => {
+    if (!exportTarget) return;
+    const page = buildExportPage(exportTarget);
+    const payload: ExportPayload = {
+      export_format: format,
+      pages: [page],
+      footer_text: EXPORT_FOOTER_TEXT,
+    };
+
+    try {
+      const blob = await postBinary("/export", payload);
+      const areaNameFragment = selectedArea?.name
+        ? ` - ${selectedArea.name}`
+        : "";
+      const baseName =
+        exportTarget.kind === "page"
+          ? `SUSPS - Energy${areaNameFragment}`
+          : exportTarget.kind === "table"
+          ? `SUSPS - Energy - Demand table${areaNameFragment}`
+          : `SUSPS - Energy - Consumption chart${areaNameFragment}`;
+      const ext = format === "pdf" ? ".pdf" : format === "csv" ? ".csv" : ".zip";
+      downloadBlob(blob, `${baseName}${ext}`);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to export Energy data", err);
+    }
+  };
 
   return (
     <div className="space-y-4 pb-16">
@@ -355,6 +536,8 @@ export function EnergyPage({ selectedArea }: EnergyPageProps) {
       )}
 
       <Table
+        title="Energy demand table"
+        onExport={handleOpenTableExport}
         columns={["Hour", "Demand (MWh)"]}
         rows={
           selectedArea && basePoints.length > 0
@@ -406,12 +589,19 @@ export function EnergyPage({ selectedArea }: EnergyPageProps) {
           series={energySeries}
           xLabel="Hour of day"
           yLabel="Demand (MWh)"
+          onExport={handleOpenChartExport}
         />
         <HotspotMap optimize={optimize} zoneId={selectedArea?.name ?? null} />
       </div>
 
       {selectedArea && energyLoading && (
         <p className="text-xs text-gray-500">Loading energy series...</p>
+      )}
+      {selectedArea && predicting && !energyLoading && (
+        <p className="text-xs text-gray-500">Computing forecast overlay...</p>
+      )}
+      {selectedArea && predictError && (
+        <p className="text-xs text-red-600">{predictError}</p>
       )}
       {selectedArea && mode === "SIMULATE" && simulateEnergyLoading && (
         <p className="text-xs text-gray-500">Loading simulated energy...</p>
@@ -447,18 +637,20 @@ export function EnergyPage({ selectedArea }: EnergyPageProps) {
         )}
       </InsightsSection>
 
+      <ExportDialog
+        isOpen={isExportDialogOpen}
+        onClose={() => {
+          setIsExportDialogOpen(false);
+          setExportTarget(null);
+        }}
+        onConfirm={(format) => {
+          void handleConfirmExport(format);
+        }}
+      />
+
       <ActionToggle
         mode={mode}
-        onPredict={() => {
-          setMode("REAL");
-          setOptimize(false);
-          setSimulateRun(0);
-          if (energyPoints.length) {
-            setPredictedEnergy(computeEnergyTrend(energyPoints));
-          } else {
-            setPredictedEnergy([]);
-          }
-        }}
+        onPredict={handlePredictClick}
         onOptimize={() => {
           setOptimize(true);
           if (mode === "SIMULATE") {

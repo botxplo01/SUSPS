@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import os
 import re
+import zipfile
 import pandas as pd
 
 # Support both `python -m src.pipeline.preprocess` (preferred) and direct
@@ -17,6 +18,66 @@ except ImportError:  # pragma: no cover - fallback for script usage
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
     from src.pipeline import config
+
+
+# Common raw search order: flat RAW_DIR first (backwards compat), then
+# domain-specific subfolders when present. This is computed dynamically so
+# monkeypatching RAW_DIR in tests (or changing DATA_CITY) continues to work.
+
+
+def _raw_search_dirs() -> list[Path]:
+    dirs: list[Path] = []
+    try:
+        # Ensure domain directories reflect the current RAW_DIR
+        config.ensure_dirs()
+    except Exception:
+        pass
+    dirs.append(config.RAW_DIR)
+    dirs.append(
+        getattr(
+            config,
+            "DEMOGRAPHICS_RAW_DIR",
+            config.RAW_DIR / "Demographics_and_Population",
+        )
+    )
+    dirs.append(
+        getattr(
+            config,
+            "ENERGY_RAW_DIR",
+            config.RAW_DIR / "Energy_and_Infrastructure",
+        )
+    )
+    dirs.append(
+        getattr(
+            config,
+            "ENVIRONMENT_RAW_DIR",
+            config.RAW_DIR / "Environmental_and_Climate",
+        )
+    )
+    dirs.append(
+        getattr(
+            config,
+            "MOBILITY_RAW_DIR",
+            config.RAW_DIR / "Mobility_and_Transport",
+        )
+    )
+    return dirs
+
+
+def _find_raw_file(filename: str) -> Path:
+    """Locate a raw file by name across RAW_DIR and domain-specific folders.
+
+    This keeps preprocess tolerant of both the legacy flat layout and the
+    newer domain-scoped raw layout. The returned Path may not exist; caller
+    should still assert existence and raise a helpful error if needed.
+    """
+
+    for d in _raw_search_dirs():
+        p = Path(d) / filename
+        if p.exists():
+            return p
+    # Default path for error messages
+    return Path(config.RAW_DIR / filename)
 
 
 def preprocess_census() -> Path:
@@ -141,7 +202,7 @@ def preprocess_growth_forecast(horizon_years: int = 6) -> Path:
 
 def preprocess_worldpop() -> Path:
     config.ensure_dirs()
-    src = config.RAW_DIR / "worldpop_summary.csv"
+    src = _find_raw_file("worldpop_summary.csv")
     if not src.exists():
         raise FileNotFoundError(f"Missing raw input: {src}")
     df = pd.read_csv(src)
@@ -155,7 +216,7 @@ def preprocess_worldpop() -> Path:
 
 def preprocess_energy() -> Path:
     config.ensure_dirs()
-    src = config.RAW_DIR / "energy_demand.csv"
+    src = _find_raw_file("energy_demand.csv")
     if not src.exists():
         raise FileNotFoundError(f"Missing raw input: {src}")
     df = pd.read_csv(src)
@@ -169,7 +230,7 @@ def preprocess_energy() -> Path:
 
 def preprocess_traffic() -> Path:
     config.ensure_dirs()
-    src = config.RAW_DIR / "traffic_flows.csv"
+    src = _find_raw_file("traffic_flows.csv")
     if not src.exists():
         raise FileNotFoundError(f"Missing raw input: {src}")
     df = pd.read_csv(src)
@@ -183,7 +244,7 @@ def preprocess_traffic() -> Path:
 
 def preprocess_environment() -> Path:
     config.ensure_dirs()
-    src = config.RAW_DIR / "environment_monthly.csv"
+    src = _find_raw_file("environment_monthly.csv")
     if not src.exists():
         raise FileNotFoundError(f"Missing raw input: {src}")
     df = pd.read_csv(src)
@@ -196,14 +257,64 @@ def preprocess_environment() -> Path:
     return out
 
 
+def preprocess_environment_aq() -> Path:
+    """Combine environment and air-quality features into a single monthly table.
+
+    This function is intentionally lightweight and tolerant of missing inputs.
+    It joins `environment_features.csv` with `air_quality_daily.csv` on month
+    (derived from the date column), computes monthly mean PM2.5/PM10/O3, and
+    derives a simple pollution_index (0..1 based on PM2.5).
+    """
+
+    config.ensure_dirs()
+    env_path = config.PROCESSED_DIR / "environment_features.csv"
+    aq_path = config.PROCESSED_DIR / "air_quality_daily.csv"
+    if not env_path.exists() or not aq_path.exists():
+        raise FileNotFoundError(
+            "preprocess_environment_aq requires environment_features.csv and "
+            "air_quality_daily.csv; run preprocess_environment and "
+            "preprocess_air_quality first."
+        )
+
+    env_df = pd.read_csv(env_path)
+    aq_df = pd.read_csv(aq_path)
+
+    if "month" not in env_df.columns:
+        raise ValueError("environment_features.csv must contain a month column")
+
+    # Derive month from date and aggregate pollutants to monthly means.
+    if "date" not in aq_df.columns:
+        raise ValueError("air_quality_daily.csv must contain a date column")
+    aq_df["date"] = pd.to_datetime(aq_df["date"], errors="coerce")
+    aq_df["month"] = aq_df["date"].dt.month
+    monthly = (
+        aq_df.groupby("month")[[c for c in aq_df.columns if c.lower() in {"pm25", "pm10", "o3"}]]
+        .mean(numeric_only=True)
+        .reset_index()
+    )
+
+    merged = env_df.merge(monthly, on="month", how="left")
+
+    # Simple pollution index based on normalized PM2.5
+    if "pm25" in merged.columns:
+        max_pm = float(merged["pm25"].max() or 1.0)
+        merged["pollution_index"] = (merged["pm25"] / max_pm).clip(0.0, 1.0)
+    else:
+        merged["pollution_index"] = 0.0
+
+    out = config.PROCESSED_DIR / "environment_aq_features.csv"
+    merged.to_csv(out, index=False)
+    return out
+
+
 def preprocess_air_quality() -> Path:
     """Create daily AQ means for pm25, pm10, o3 from raw OpenAQ (or fallback CSV)."""
     config.ensure_dirs()
     # Prefer API-fetched raw
-    aqi = config.RAW_DIR / "air_quality_raw.csv"
+    aqi = _find_raw_file("air_quality_raw.csv")
     if not aqi.exists():
         # fallback to provided raw CSV name if present
-        aqi = config.RAW_DIR / "Air_Quality_Data_2025.csv"
+        aqi = _find_raw_file("Air_Quality_Data_2025.csv")
         if not aqi.exists():
             raise FileNotFoundError(f"Missing raw input: {aqi}")
     df = pd.read_csv(aqi)
@@ -230,32 +341,56 @@ def preprocess_air_quality() -> Path:
             index="date", columns="parameter", values="value"
         ).reset_index()
     else:
-        # Attempt to coerce a generic CSV with date + pollutant columns
-        # Find a date-like column
+        # Attempt to coerce a generic CSV with date/time-like + pollutant columns
+        # Find a date-like column (supports 'date', 'time', 'timestamp', 'month')
         date_col = None
         for c in df.columns:
-            if "date" in c.lower():
+            cl = c.lower()
+            if any(tok in cl for tok in ["date", "time", "stamp", "month"]):
                 date_col = c
                 break
         if date_col is None:
             raise ValueError("Could not find date/datetime columns for air quality")
+
         d = df.rename(columns={date_col: "date"}).copy()
         d["date"] = pd.to_datetime(d["date"], errors="coerce").dt.date
-        # Keep common pollutant names if present
-        keep = [c for c in d.columns if c.lower() in {"pm25", "pm10", "o3"}]
-        if not keep:
-            # if values are in a single column, just provide pm25 as proxy
+
+        # Map pollutant-like columns to canonical pm25/pm10/o3 buckets. This
+        # handles schemas like Air_Quality_Data_2025.csv where we have pm2_5,
+        # s1_pm2_5, s2_pm2_5, etc.
+        pollutant_map: dict[str, list[str]] = {}
+        for c in d.columns:
+            cl = c.lower()
+            if c == "date":
+                continue
+            if (cl == "pm25") or ("pm2_5" in cl) or ("pm2.5" in cl):
+                pollutant_map.setdefault("pm25", []).append(c)
+            elif (cl == "pm10") or ("pm10" in cl):
+                pollutant_map.setdefault("pm10", []).append(c)
+            elif cl == "o3" or "ozone" in cl:
+                pollutant_map.setdefault("o3", []).append(c)
+
+        if pollutant_map:
+            # Build a compact frame with averaged pollutant buckets
+            out_rows = {"date": d["date"]}
+            for key, cols_list in pollutant_map.items():
+                # Robust against missing/NaN values
+                out_rows[key] = d[cols_list].mean(axis=1)
+            d2 = pd.DataFrame(out_rows)
+            out_df = d2.groupby("date").mean(numeric_only=True).reset_index()
+        else:
+            # Fallback: choose a numeric column as pm25 proxy
             valcol = None
             for c in d.columns:
+                if c == "date":
+                    continue
                 if pd.api.types.is_numeric_dtype(d[c]):
                     valcol = c
                     break
             if valcol is None:
                 raise ValueError("No numeric AQ columns found")
-            d = d[["date", valcol]].rename(columns={valcol: "pm25"})
-        else:
-            d = d[["date", *keep]].copy()
-        out_df = d.groupby("date").mean(numeric_only=True).reset_index()
+            d2 = d[["date", valcol]].rename(columns={valcol: "pm25"})
+            out_df = d2.groupby("date").mean(numeric_only=True).reset_index()
     out = config.PROCESSED_DIR / "air_quality_daily.csv"
     out_df.to_csv(out, index=False)
     return out
@@ -263,7 +398,7 @@ def preprocess_air_quality() -> Path:
 
 def preprocess_socioeconomic() -> Path:
     config.ensure_dirs()
-    src = config.RAW_DIR / "socioeconomic.csv"
+    src = _find_raw_file("socioeconomic.csv")
     if not src.exists():
         raise FileNotFoundError(f"Missing raw input: {src}")
     df = pd.read_csv(src)
@@ -273,6 +408,180 @@ def preprocess_socioeconomic() -> Path:
     )
     df["employment_score"] = (df["employment_rate"] * 100).round(1)
     out = config.PROCESSED_DIR / "socioeconomic_features.csv"
+    df.to_csv(out, index=False)
+    return out
+
+
+def preprocess_demographic_rasters() -> Path:
+    """Summarize demographic raster TIFFs under Demographics_and_Population.
+
+    Uses rasterio if available for basic statistics; otherwise records file
+    metadata only. This ensures population rasters are incorporated into the
+    processed layer even in lightweight environments.
+    """
+
+    config.ensure_dirs()
+    root = getattr(
+        config,
+        "DEMOGRAPHICS_RAW_DIR",
+        config.RAW_DIR / "Demographics_and_Population",
+    )
+    root_path = Path(root)
+
+    try:  # optional dependency
+        import rasterio  # type: ignore
+
+        has_rasterio = True
+    except Exception:
+        has_rasterio = False
+
+    rows: list[dict] = []
+    for p in root_path.glob("*.tif"):
+        entry: dict = {
+            "name": p.name,
+            "path": str(p),
+            "bytes": p.stat().st_size,
+        }
+        if has_rasterio:
+            try:
+                with rasterio.open(p) as src:  # type: ignore[attr-defined]
+                    band = src.read(1, masked=True)
+                    data = band.compressed()
+                    if data.size:
+                        entry["min"] = float(data.min())
+                        entry["max"] = float(data.max())
+                        entry["mean"] = float(data.mean())
+                        entry["sum"] = float(data.sum())
+                        entry["count"] = int(data.size)
+                    entry["crs"] = str(src.crs) if src.crs is not None else None
+                    entry["width"] = src.width
+                    entry["height"] = src.height
+                    try:
+                        rx, ry = src.res
+                        entry["res_x"] = float(rx)
+                        entry["res_y"] = float(ry)
+                    except Exception:
+                        pass
+            except Exception:
+                # Fall back to metadata-only entry on any raster read error
+                pass
+        rows.append(entry)
+
+    df = pd.DataFrame(rows)
+    out = config.PROCESSED_DIR / "demographic_raster_summary.csv"
+    df.to_csv(out, index=False)
+    return out
+
+
+def preprocess_landcover() -> Path:
+    """Summarize land-cover raster TIFFs under Environmental_and_Climate."""
+
+    config.ensure_dirs()
+    root = getattr(
+        config,
+        "ENVIRONMENT_RAW_DIR",
+        config.RAW_DIR / "Environmental_and_Climate",
+    )
+    root_path = Path(root)
+
+    try:  # optional dependency
+        import rasterio  # type: ignore
+
+        has_rasterio = True
+    except Exception:
+        has_rasterio = False
+
+    rows: list[dict] = []
+    for p in root_path.glob("*.tif"):
+        entry: dict = {
+            "name": p.name,
+            "path": str(p),
+            "bytes": p.stat().st_size,
+        }
+        if has_rasterio:
+            try:
+                with rasterio.open(p) as src:  # type: ignore[attr-defined]
+                    band = src.read(1, masked=True)
+                    data = band.compressed()
+                    if data.size:
+                        entry["min"] = float(data.min())
+                        entry["max"] = float(data.max())
+                        entry["mean"] = float(data.mean())
+                        entry["sum"] = float(data.sum())
+                        entry["count"] = int(data.size)
+                    entry["crs"] = str(src.crs) if src.crs is not None else None
+                    entry["width"] = src.width
+                    entry["height"] = src.height
+                    try:
+                        rx, ry = src.res
+                        entry["res_x"] = float(rx)
+                        entry["res_y"] = float(ry)
+                    except Exception:
+                        pass
+            except Exception:
+                # Fall back to metadata-only entry on any raster read error
+                pass
+        rows.append(entry)
+
+    df = pd.DataFrame(rows)
+    out = config.PROCESSED_DIR / "landcover_raster_summary.csv"
+    df.to_csv(out, index=False)
+    return out
+
+
+def preprocess_mobility_gis() -> Path:
+    """Summarize GIS layers from GIS_DATA_2019.zip under Mobility_and_Transport.
+
+    Uses geopandas if available to count features per layer; otherwise records
+    basic layer metadata from the ZIP archive only.
+    """
+
+    config.ensure_dirs()
+    root = getattr(
+        config,
+        "MOBILITY_RAW_DIR",
+        config.RAW_DIR / "Mobility_and_Transport",
+    )
+    zip_path = Path(root) / "GIS_DATA_2019.zip"
+    if not zip_path.exists():
+        raise FileNotFoundError(f"Missing raw input: {zip_path}")
+
+    try:  # optional dependency
+        import geopandas as gpd  # type: ignore
+
+        has_gpd = True
+    except Exception:
+        has_gpd = False
+
+    rows: list[dict] = []
+    with zipfile.ZipFile(zip_path) as zf:
+        for zi in zf.infolist():
+            if not zi.filename.lower().endswith(".shp"):
+                continue
+            entry: dict = {
+                "layer": Path(zi.filename).stem,
+                "filename": zi.filename,
+                "bytes": zi.file_size,
+            }
+            if has_gpd:
+                try:
+                    layer_path = f"zip://{zip_path}!{zi.filename}"
+                    gdf = gpd.read_file(layer_path)
+                    entry["records"] = int(len(gdf))
+                    if gdf.crs is not None:
+                        entry["crs"] = str(gdf.crs)
+                    if not gdf.geom_type.empty:
+                        try:
+                            entry["geometry_type"] = str(gdf.geom_type.mode().iat[0])
+                        except Exception:
+                            pass
+                except Exception:
+                    # Keep metadata-only entry on any read failure
+                    pass
+            rows.append(entry)
+
+    df = pd.DataFrame(rows)
+    out = config.PROCESSED_DIR / "mobility_gis_layers.csv"
     df.to_csv(out, index=False)
     return out
 
@@ -493,6 +802,71 @@ def preprocess_hotspots_forecast(horizon_years: int = 6) -> Path:
     return out
 
 
+def preprocess_traffic_enriched() -> Path:
+    """Enrich traffic_features.csv with MATATUS/OSM-derived context.
+
+    This is deliberately conservative: it augments each row in
+    `traffic_features.csv` with city-level indicators where available,
+    without making strong assumptions about MATATUS/OSM schema.
+    """
+
+    config.ensure_dirs()
+    base_path = config.PROCESSED_DIR / "traffic_features.csv"
+    if not base_path.exists():
+        raise FileNotFoundError(f"Missing processed input: {base_path}")
+
+    df = pd.read_csv(base_path)
+
+    # MATATUS_PATH: count records (or unique route id) as a simple intensity
+    matatus_count = None
+    mat_path = getattr(config, "MATATUS_PATH", None)
+    if mat_path is not None and Path(mat_path).exists():
+        try:
+            mdf = pd.read_csv(mat_path)
+            route_col = next(
+                (c for c in mdf.columns if "route" in str(c).lower()),
+                None,
+            )
+            if route_col:
+                matatus_count = int(mdf[route_col].nunique())
+            else:
+                matatus_count = int(len(mdf))
+        except Exception:
+            matatus_count = None
+
+    # OSM_PATH: if a vector file is provided and geopandas is available, count
+    # features and approximate total length (if geometry is present).
+    osm_feature_count = None
+    osm_total_km = None
+    osm_path = getattr(config, "OSM_PATH", None)
+    if osm_path is not None and Path(osm_path).exists():
+        try:
+            import geopandas as gpd  # type: ignore
+
+            gdf = gpd.read_file(osm_path)
+            osm_feature_count = int(len(gdf))
+            # If projected CRS, approximate length in km; otherwise skip length.
+            if gdf.crs is not None and not gdf.crs.is_geographic:
+                with pd.option_context("mode.use_inf_as_na", True):
+                    total_area = float(gdf.geometry.length.sum())
+                    osm_total_km = total_area / 1000.0
+        except Exception:
+            osm_feature_count = None
+            osm_total_km = None
+
+    if matatus_count is not None:
+        df["matatu_route_count"] = matatus_count
+    else:
+        df["matatu_route_count"] = None
+
+    df["osm_feature_count"] = osm_feature_count
+    df["osm_total_km"] = osm_total_km
+
+    out = config.PROCESSED_DIR / "traffic_enriched_features.csv"
+    df.to_csv(out, index=False)
+    return out
+
+
 def preprocess_urban_growth() -> tuple[Path, Path]:
     """Integrate Urban_Growth directory by producing a catalog and simple features.
 
@@ -619,7 +993,36 @@ def main() -> None:
     wp = preprocess_worldpop()
     en = preprocess_energy()
     tf = preprocess_traffic()
+    tf_enriched = None
+    try:
+        tf_enriched = preprocess_traffic_enriched()
+    except Exception:
+        tf_enriched = None
+
+    demo_rasters = None
+    try:
+        demo_rasters = preprocess_demographic_rasters()
+    except Exception:
+        demo_rasters = None
+
+    landcover = None
+    try:
+        landcover = preprocess_landcover()
+    except Exception:
+        landcover = None
+
+    mobility_gis = None
+    try:
+        mobility_gis = preprocess_mobility_gis()
+    except Exception:
+        mobility_gis = None
+
     env = preprocess_environment()
+    env_aq = None
+    try:
+        env_aq = preprocess_environment_aq()
+    except Exception:
+        env_aq = None
     # Census is optional based on provided raw files
     cen = None
     try:
@@ -633,10 +1036,10 @@ def main() -> None:
     except Exception:
         gfc = None
     aq = None
-    # Only preprocess air quality if a raw input exists
-    if (config.RAW_DIR / "air_quality_raw.csv").exists() or (
-        config.RAW_DIR / "Air_Quality_Data_2025.csv"
-    ).exists():
+    # Only preprocess air quality if a raw input exists (in any raw search dir)
+    aq_raw = _find_raw_file("air_quality_raw.csv")
+    aq_fallback = _find_raw_file("Air_Quality_Data_2025.csv")
+    if aq_raw.exists() or aq_fallback.exists():
         aq = preprocess_air_quality()
 
     # Urban growth (optional, requires SETTLEMENTS_PATH / GRID3_SETTLEMENTS_PATH).
@@ -669,7 +1072,17 @@ def main() -> None:
     print(f"Saved: {wp}")
     print(f"Saved: {en}")
     print(f"Saved: {tf}")
+    if tf_enriched:
+        print(f"Saved: {tf_enriched}")
+    if demo_rasters:
+        print(f"Saved: {demo_rasters}")
+    if landcover:
+        print(f"Saved: {landcover}")
+    if mobility_gis:
+        print(f"Saved: {mobility_gis}")
     print(f"Saved: {env}")
+    if env_aq:
+        print(f"Saved: {env_aq}")
     if cen:
         print(f"Saved: {cen}")
     if gfc:

@@ -3,9 +3,14 @@ from fastapi import Query
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from starlette.responses import RedirectResponse
+from fastapi.responses import Response
 from pydantic import BaseModel
 import os
-from typing import Optional, Any, Dict, Literal
+from typing import Optional, Any, Dict, Literal, List
+import io
+import csv
+import zipfile
+from datetime import datetime, timezone
 import requests
 
 # Load .env in local dev so API picks up LOCAL_DATABASE_URL and local paths
@@ -56,14 +61,6 @@ def health():
     return JSONResponse({"status": "ok", "service": "susps", "version": "0.1.0"})
 
 
-# Simple in-memory config for demo source selection on Render
-_DEFAULT_SOURCE = os.getenv("DEFAULT_DATA_SOURCE", "demo")
-
-
-class ConfigPayload(BaseModel):
-    data_source: str
-
-
 class SimulationInputPayload(BaseModel):
     """Payload for creating simulation input records.
 
@@ -106,18 +103,57 @@ class TimeSeriesForecastPayload(BaseModel):
     use_model: bool = False
 
 
-@app.get("/config")
-def get_config():
-    return {"data_source": _DEFAULT_SOURCE}
+# --------------------------- export models ---------------------------
 
 
-@app.post("/config")
-def set_config(payload: ConfigPayload):
-    global _DEFAULT_SOURCE
-    if payload.data_source not in {"demo", "api"}:
-        return JSONResponse({"detail": "invalid data_source"}, status_code=400)
-    _DEFAULT_SOURCE = payload.data_source
-    return {"data_source": _DEFAULT_SOURCE}
+class ExportChartSeries(BaseModel):
+    label: str
+    points: list[Dict[str, float]]  # {"x": number, "y": number}
+
+
+class ExportChart(BaseModel):
+    title: str
+    x_label: Optional[str] = None
+    y_label: Optional[str] = None
+    series: list[ExportChartSeries]
+
+
+class ExportTable(BaseModel):
+    title: str
+    columns: list[str]
+    rows: list[list[Optional[str]]]
+
+
+class ExportPage(BaseModel):
+    """Represents the data needed to export a single logical page.
+
+    The frontend constructs these from the currently visible charts/tables so the
+    export reflects exactly what the user sees (REAL vs SIMULATE, presets, etc.).
+    """
+
+    page_name: str
+    mode: Literal["REAL", "SIMULATE"]
+    area_name: str
+    area_id: Optional[int] = None
+    description: Optional[str] = None
+    insights: Optional[str] = None
+    tables: List[ExportTable] = []
+    charts: List[ExportChart] = []
+
+
+class ExportPayload(BaseModel):
+    """Payload for exporting one or more pages as PDF/CSV/bundle.
+
+    - When `pages` has a single entry and format is CSV, a single CSV file is
+      produced.
+    - When `pages` has multiple entries, CSV or bundle exports contain one CSV
+      file per page inside a ZIP archive, effectively acting as separate
+      "sheets" per page.
+    """
+
+    export_format: Literal["pdf", "csv", "bundle"]
+    pages: List[ExportPage]
+    footer_text: Optional[str] = None
 
 
 # --- Optional database wiring (enabled via env) ---
@@ -161,6 +197,9 @@ try:
             SimulationInput,
             EnergyConsumption,
             TrafficFlow,
+            EnvironmentFeature,
+            AirQualityDaily,
+            HotspotScore,
         )  # type: ignore
         from sqlalchemy import text  # type: ignore
 
@@ -425,6 +464,150 @@ def traffic_summary(area_id: Optional[int] = Query(None)):
         return {"items": []}
 
 
+@app.get("/environment/features")
+def environment_features(area_id: Optional[int] = Query(None)):
+    """Return monthly environment + air-quality features.
+
+    When the database is enabled, this reads from the environment_features
+    table; otherwise it falls back to environment_aq_features.csv.
+    """
+
+    # DB-first when enabled
+    if _DB_ENABLED:
+        try:
+            with SessionLocal() as db:  # type: ignore[name-defined]
+                q = db.query(EnvironmentFeature)
+                if area_id is not None:
+                    q = q.filter(EnvironmentFeature.area_id == area_id)
+                rows = q.order_by(EnvironmentFeature.month.asc()).all()
+                items = [
+                    {
+                        "id": r.id,
+                        "area_id": r.area_id,
+                        "month": r.month,
+                        "temp_c": r.temp_c,
+                        "rain_mm": r.rain_mm,
+                        "cooling_deg": r.cooling_deg,
+                        "wet_month": r.wet_month,
+                        "pm25": r.pm25,
+                        "pm10": r.pm10,
+                        "o3": r.o3,
+                        "pollution_index": r.pollution_index,
+                    }
+                    for r in rows
+                ]
+                if items:
+                    return {"items": items}
+        except Exception:
+            # Fall through to processed/demo fallback
+            pass
+
+    # Processed CSV fallback
+    try:
+        import pandas as pd  # type: ignore
+        from src.pipeline import config as _cfg  # type: ignore
+
+        f = _cfg.PROCESSED_DIR / "environment_aq_features.csv"
+        if not f.exists():
+            return {"items": []}
+        df = pd.read_csv(f)
+        items = []
+        for _, r in df.iterrows():
+            try:
+                month = int(r.get("month", 0))
+            except Exception:
+                continue
+            items.append(
+                {
+                    "area_id": area_id,
+                    "month": month,
+                    "temp_c": float(r.get("temp_c")) if "temp_c" in df.columns else None,
+                    "rain_mm": float(r.get("rain_mm")) if "rain_mm" in df.columns else None,
+                    "cooling_deg": float(r.get("cooling_deg"))
+                    if "cooling_deg" in df.columns
+                    else None,
+                    "wet_month": int(r.get("wet_month")) if "wet_month" in df.columns else None,
+                    "pm25": float(r.get("pm25")) if "pm25" in df.columns else None,
+                    "pm10": float(r.get("pm10")) if "pm10" in df.columns else None,
+                    "o3": float(r.get("o3")) if "o3" in df.columns else None,
+                    "pollution_index": float(r.get("pollution_index"))
+                    if "pollution_index" in df.columns
+                    else None,
+                }
+            )
+        return {"items": items}
+    except Exception:
+        return {"items": []}
+
+
+@app.get("/air_quality/daily")
+def air_quality_daily(
+    area_id: Optional[int] = Query(None),
+    limit: int = Query(365, ge=1, le=3650),
+):
+    """Return daily air-quality aggregates (pm25/pm10/o3).
+
+    When the database is enabled, this reads from the air_quality_daily table;
+    otherwise it falls back to air_quality_daily.csv.
+    """
+
+    if _DB_ENABLED:
+        try:
+            with SessionLocal() as db:  # type: ignore[name-defined]
+                q = db.query(AirQualityDaily)
+                if area_id is not None:
+                    q = q.filter(AirQualityDaily.area_id == area_id)
+                rows = (
+                    q.order_by(AirQualityDaily.date.desc())
+                    .limit(limit)
+                    .all()
+                )
+                items = [
+                    {
+                        "id": r.id,
+                        "area_id": r.area_id,
+                        "date": r.date.isoformat() if r.date else None,
+                        "pm25": r.pm25,
+                        "pm10": r.pm10,
+                        "o3": r.o3,
+                    }
+                    for r in rows
+                ]
+                if items:
+                    return {"items": items}
+        except Exception:
+            # Fall through to processed/demo fallback
+            pass
+
+    try:
+        import pandas as pd  # type: ignore
+        from src.pipeline import config as _cfg  # type: ignore
+
+        f = _cfg.PROCESSED_DIR / "air_quality_daily.csv"
+        if not f.exists():
+            return {"items": []}
+        df = pd.read_csv(f)
+        if "date" not in df.columns:
+            return {"items": []}
+        df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
+        df = df.dropna(subset=["date"]).sort_values("date", ascending=False).head(limit)
+        items = []
+        for _, r in df.iterrows():
+            d = r["date"]
+            items.append(
+                {
+                    "area_id": area_id,
+                    "date": d.isoformat() if d else None,
+                    "pm25": float(r.get("pm25")) if "pm25" in df.columns else None,
+                    "pm10": float(r.get("pm10")) if "pm10" in df.columns else None,
+                    "o3": float(r.get("o3")) if "o3" in df.columns else None,
+                }
+            )
+        return {"items": items}
+    except Exception:
+        return {"items": []}
+
+
 @app.get("/hotspots/areas")
 def hotspots_areas(
     admin_unit: Optional[str] = Query(
@@ -529,6 +712,137 @@ def hotspots_areas_forecast(
                     if partial.any():
                         df = df[partial]
         items = df.to_dict(orient="records")
+        return {"items": items}
+    except Exception as e:
+        return {"items": [], "detail": str(e)}
+
+
+@app.get("/hotspots/scores")
+def hotspots_scores(
+    year: Optional[int] = Query(None),
+    admin_unit: Optional[str] = Query(
+        None,
+        description="Optional exact admin_unit filter (case-insensitive).",
+    ),
+    zone_id: Optional[str] = Query(
+        None,
+        description=(
+            "Optional zone/area name filter; matched against admin_unit "
+            "case-insensitively, with exact-match preferred over partial."
+        ),
+    ),
+):
+    """Return hotspot scores from DB or processed CSVs.
+
+    When the database is enabled, this reads from the hotspot_scores table.
+    Otherwise it falls back to hotspots_areas.csv and hotspots_areas_forecast.csv
+    and returns a unified view.
+    """
+
+    def _filter_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not items:
+            return []
+        if admin_unit:
+            target = admin_unit.strip().lower()
+            return [
+                it
+                for it in items
+                if str(it.get("admin_unit", "")).lower() == target
+            ]
+        if zone_id:
+            target = zone_id.strip().lower()
+            names = [str(it.get("admin_unit", "")).lower() for it in items]
+            exact = [it for it, name in zip(items, names) if name == target]
+            if exact:
+                return exact
+            partial = [it for it, name in zip(items, names) if target in name]
+            if partial:
+                return partial
+        return items
+
+    # DB-first when enabled
+    if _DB_ENABLED:
+        try:
+            with SessionLocal() as db:  # type: ignore[name-defined]
+                q = db.query(HotspotScore)
+                if year is not None:
+                    q = q.filter(HotspotScore.year == year)
+                rows = q.order_by(HotspotScore.admin_unit.asc(), HotspotScore.year.asc()).all()
+                items = [
+                    {
+                        "id": r.id,
+                        "area_id": r.area_id,
+                        "admin_unit": r.admin_unit,
+                        "year": r.year,
+                        "population": r.population,
+                        "pop_share": r.pop_share,
+                        "income_norm": r.income_norm,
+                        "employment_score": r.employment_score,
+                        "hotspot_score": r.hotspot_score,
+                    }
+                    for r in rows
+                ]
+                items = _filter_items(items)
+                if items:
+                    return {"items": items}
+        except Exception:
+            # Fall through to processed/demo fallback
+            pass
+
+    # CSV fallback
+    try:
+        import pandas as pd  # type: ignore
+        from src.pipeline import config as _cfg  # type: ignore
+
+        items: list[dict[str, Any]] = []
+
+        base_path = _cfg.PROCESSED_DIR / "hotspots_areas.csv"
+        if base_path.exists():
+            df = pd.read_csv(base_path)
+            for _, r in df.iterrows():
+                # Baseline rows have year=None and are only included when no
+                # explicit year filter is provided.
+                if year is not None:
+                    continue
+                items.append(
+                    {
+                        "area_id": None,
+                        "admin_unit": r.get("admin_unit"),
+                        "year": None,
+                        "population": r.get("population"),
+                        "pop_share": r.get("pop_share"),
+                        "income_norm": r.get("income_norm"),
+                        "employment_score": r.get("employment_score"),
+                        "hotspot_score": r.get("hotspot_score"),
+                    }
+                )
+
+        forecast_path = _cfg.PROCESSED_DIR / "hotspots_areas_forecast.csv"
+        if forecast_path.exists():
+            df = pd.read_csv(forecast_path)
+            for _, r in df.iterrows():
+                yr = None
+                if "year" in df.columns:
+                    try:
+                        yr = int(r.get("year"))
+                    except Exception:
+                        yr = None
+                if year is not None and yr != year:
+                    continue
+                items.append(
+                    {
+                        "area_id": None,
+                        "admin_unit": r.get("admin_unit"),
+                        "year": yr,
+                        "population": r.get("population"),
+                        "pop_share": r.get("pop_share"),
+                        "income_norm": r.get("income_norm"),
+                        "employment_score": r.get("employment_score"),
+                        "hotspot_score": r.get("hotspot_score"),
+                    }
+                )
+
+        items = _filter_items(items)
         return {"items": items}
     except Exception as e:
         return {"items": [], "detail": str(e)}
@@ -830,6 +1144,260 @@ def ts_forecast(payload: TimeSeriesForecastPayload):
         "items": items,
         "used_model": bool(payload.use_model and os.getenv("HF_API_KEY")),
     }
+
+
+def _build_csv_for_page(page: ExportPage) -> bytes:
+    """Build a single CSV file for the given page.
+
+    The CSV is structured as:
+    - Area and page metadata at the top
+    - One block per table (with its title)
+    - One block per chart, rendered as a wide table (x plus one column per
+      series label)
+    """
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+
+    writer.writerow([f"Area: {page.area_name}"])
+    writer.writerow([f"Page: {page.page_name}"])
+    writer.writerow([f"Mode: {page.mode}"])
+    writer.writerow([])
+
+    # Tables
+    for table in page.tables:
+        writer.writerow([f"Table: {table.title}"])
+        writer.writerow(table.columns)
+        for row in table.rows:
+            writer.writerow(["" if v is None else str(v) for v in row])
+        writer.writerow([])
+
+    # Charts as tables
+    for chart in page.charts:
+        writer.writerow([f"Chart: {chart.title}"])
+        # Collect all distinct x-values in order of appearance
+        x_values: List[Any] = []
+        for series in chart.series:
+            for pt in series.points:
+                x_val = pt.get("x")
+                if x_val not in x_values:
+                    x_values.append(x_val)
+        header = ["x"] + [s.label for s in chart.series]
+        writer.writerow(header)
+        for x_val in x_values:
+            row: List[str] = [str(x_val)]
+            for series in chart.series:
+                # find point with this x (if any)
+                val = None
+                for pt in series.points:
+                    if pt.get("x") == x_val:
+                        val = pt.get("y")
+                        break
+                row.append("" if val is None else str(val))
+            writer.writerow(row)
+        writer.writerow([])
+
+    return buf.getvalue().encode("utf-8")
+
+
+def _build_pdf(payload: ExportPayload) -> bytes:
+    """Build a multi-page PDF for the given export payload.
+
+    Uses reportlab if available. If reportlab is not installed, raises
+    ImportError with a helpful message.
+    """
+
+    try:
+        from reportlab.lib.pagesizes import A4  # type: ignore
+        from reportlab.lib.styles import getSampleStyleSheet  # type: ignore
+        from reportlab.platypus import (  # type: ignore
+            SimpleDocTemplate,
+            Paragraph,
+            Spacer,
+            Table as RLTable,
+            TableStyle,
+        )
+        from reportlab.lib import colors  # type: ignore
+    except Exception as exc:  # pragma: no cover - optional dependency
+        raise ImportError(
+            "PDF export requires the 'reportlab' package. Install it with 'pip install reportlab'."
+        ) from exc
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=48, bottomMargin=48)
+    styles = getSampleStyleSheet()
+    story: List[Any] = []
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    for idx, page in enumerate(payload.pages):
+        if idx > 0:
+            story.append(Spacer(1, 18))
+
+        title_text = "Smart Urban Simulation and Prediction System (SUSPS)"
+        story.append(Paragraph(title_text, styles["Title"]))
+        story.append(Spacer(1, 6))
+        story.append(
+            Paragraph(
+                f"Page: {page.page_name} | Area: {page.area_name} | Mode: {page.mode}",
+                styles["Normal"],
+            )
+        )
+        story.append(Paragraph(f"Exported at: {now}", styles["Normal"]))
+        if page.description:
+            story.append(Spacer(1, 6))
+            story.append(Paragraph(page.description, styles["BodyText"]))
+        story.append(Spacer(1, 12))
+
+        # Tables
+        for table in page.tables:
+            story.append(Paragraph(table.title, styles["Heading3"]))
+            data: List[List[Any]] = [table.columns]
+            for row in table.rows:
+                data.append(["" if v is None else str(v) for v in row])
+            rl_table = RLTable(data, hAlign="LEFT")
+            rl_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                        ("FONTSIZE", (0, 0), (-1, -1), 8),
+                        ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
+                    ]
+                )
+            )
+            story.append(rl_table)
+            story.append(Spacer(1, 12))
+
+        # Charts rendered as tables (x vs series)
+        for chart in page.charts:
+            story.append(Paragraph(chart.title, styles["Heading3"]))
+            x_values: List[Any] = []
+            for series in chart.series:
+                for pt in series.points:
+                    x_val = pt.get("x")
+                    if x_val not in x_values:
+                        x_values.append(x_val)
+            header = ["x"] + [s.label for s in chart.series]
+            data: List[List[Any]] = [header]
+            for x_val in x_values:
+                row: List[str] = [str(x_val)]
+                for series in chart.series:
+                    val = None
+                    for pt in series.points:
+                        if pt.get("x") == x_val:
+                            val = pt.get("y")
+                            break
+                    row.append("" if val is None else str(val))
+                data.append(row)
+            rl_table = RLTable(data, hAlign="LEFT")
+            rl_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                        ("FONTSIZE", (0, 0), (-1, -1), 8),
+                        ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
+                    ]
+                )
+            )
+            story.append(rl_table)
+            story.append(Spacer(1, 12))
+
+        # Advisory / insights
+        if page.insights:
+            story.append(Paragraph("AI Analysis & Insights", styles["Heading3"]))
+            story.append(Paragraph(page.insights, styles["BodyText"]))
+            story.append(Spacer(1, 12))
+
+    footer_text = payload.footer_text or "Smart Urban Simulation and Prediction System (SUSPS) — © 2025 Developed by David Lameck."
+
+    def _footer(canvas, doc):  # type: ignore[override]
+        canvas.saveState()
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColorRGB(0.3, 0.3, 0.3)
+        text_y = 20
+        canvas.drawString(36, text_y, footer_text)
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
+    return buf.getvalue()
+
+
+@app.post("/export")
+def export_documents(payload: ExportPayload):
+    """Export one or more pages as PDF, CSV, or a bundled ZIP.
+
+    The frontend is responsible for sending the exact data currently visible in
+    the UI so that REAL vs SIMULATE, presets, and advisory text are faithfully
+    captured.
+    """
+
+    if not payload.pages:
+        return JSONResponse({"detail": "No pages provided for export."}, status_code=400)
+
+    # Normalise page names for filenames
+    def _slug(name: str) -> str:
+        return " ".join(name.split())
+
+    if payload.export_format == "pdf":
+        try:
+            pdf_bytes = _build_pdf(payload)
+        except ImportError as exc:
+            return JSONResponse({"detail": str(exc)}, status_code=503)
+        filename = f"susps_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
+    if payload.export_format == "csv":
+        if len(payload.pages) == 1:
+            page = payload.pages[0]
+            csv_bytes = _build_csv_for_page(page)
+            filename = f"SUSPS - {_slug(page.page_name)}.csv"
+            return Response(
+                content=csv_bytes,
+                media_type="text/csv",
+                headers={"Content-Disposition": f"attachment; filename={filename}"},
+            )
+
+        # Multiple pages: return a ZIP archive, one CSV per page
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for page in payload.pages:
+                csv_bytes = _build_csv_for_page(page)
+                name = f"SUSPS - {_slug(page.page_name)}.csv"
+                zf.writestr(name, csv_bytes)
+        filename = f"susps_export_csv_bundle_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.zip"
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
+    # Bundle: ZIP containing PDF plus per-page CSVs
+    try:
+        pdf_bytes = _build_pdf(payload)
+    except ImportError as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=503)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("susps_export.pdf", pdf_bytes)
+        for page in payload.pages:
+            csv_bytes = _build_csv_for_page(page)
+            name = f"SUSPS - {_slug(page.page_name)}.csv"
+            zf.writestr(name, csv_bytes)
+    filename = f"susps_export_bundle_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.zip"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 # --- AI advisory (Hugging Face) ---

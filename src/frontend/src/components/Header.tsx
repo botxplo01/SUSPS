@@ -107,9 +107,15 @@ interface HeaderProps {
   onToggleSidebar: () => void;
   selectedArea: Area | null;
   onSelectArea: (area: Area) => void;
+  onExportPage?: () => void;
 }
 
-export function Header({ onToggleSidebar, selectedArea, onSelectArea }: HeaderProps) {
+export function Header({
+  onToggleSidebar,
+  selectedArea,
+  onSelectArea,
+  onExportPage,
+}: HeaderProps) {
   const { pathname } = useLocation();
   const title = titleForPath(pathname);
   const [scrolled, setScrolled] = useState(false);
@@ -225,12 +231,37 @@ export function Header({ onToggleSidebar, selectedArea, onSelectArea }: HeaderPr
             </h1>
           </div>
         </div>
-        <button
-          type="button"
-          className={`inline-flex rounded-full px-4 py-2 text-xs sm:text-sm font-medium shadow-sm border ${buttonClasses}`}
-        >
-          Sign out
-        </button>
+        <div className="flex items-center gap-2">
+          {onExportPage && (
+            <button
+              type="button"
+              onClick={onExportPage}
+              className="inline-flex items-center rounded-full bg-blue-900 px-4 py-2 text-xs sm:text-sm font-medium text-white shadow-sm hover:bg-blue-800"
+            >
+              <svg
+                viewBox="0 0 20 20"
+                className="mr-1.5 h-4 w-4"
+                aria-hidden="true"
+              >
+                <path
+                  d="M10 2a.75.75 0 01.75.75v7.19l2.22-2.22a.75.75 0 111.06 1.06l-3.5 3.5a.75.75 0 01-1.06 0l-3.5-3.5a.75.75 0 111.06-1.06l2.22 2.22V2.75A.75.75 0 0110 2z"
+                  className="fill-current"
+                />
+                <path
+                  d="M4 12.75a.75.75 0 011.5 0v1.5h9v-1.5a.75.75 0 011.5 0v2.25A1.25 1.25 0 0114.75 16H5.25A1.25 1.25 0 014 15.25z"
+                  className="fill-current"
+                />
+              </svg>
+              Export
+            </button>
+          )}
+          <button
+            type="button"
+            className={`inline-flex rounded-full px-4 py-2 text-xs sm:text-sm font-medium shadow-sm border ${buttonClasses}`}
+          >
+            Sign out
+          </button>
+        </div>
       </div>
 
       <div

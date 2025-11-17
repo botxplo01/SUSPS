@@ -8,14 +8,33 @@ import { HotspotMap } from "../components/Map";
 import { InsightsSection } from "../components/InsightsSection";
 import { ActionToggle } from "../components/ActionToggle";
 import { FormattedInsights } from "../components/FormattedInsights";
-import type { Area, Mode, ChartPoint, ChartSeries } from "../types";
+import { ExportDialog } from "../components/ExportDialog";
+import { postJson, postBinary, downloadBlob } from "../api";
+import type {
+  Area,
+  Mode,
+  ChartPoint,
+  ChartSeries,
+  ExportPayload,
+  ExportPage,
+  ExportFormat,
+} from "../types";
 import { useAdvisory } from "../hooks/useAdvisory";
 import { useTrafficSeries } from "../hooks/useSeries";
 import { useSimulationSeries } from "../hooks/useSimulation";
 
 interface TrafficPageProps {
   selectedArea: Area | null;
+  onRegisterExporter?: (fn: () => void) => void;
 }
+
+type TrafficExportTarget =
+  | { kind: "page" }
+  | { kind: "chart"; id: "volume" }
+  | { kind: "table"; id: "volume" };
+
+const EXPORT_FOOTER_TEXT =
+  "Smart Urban Simulation and Prediction System (SUSPS) — © 2025 Developed by David Lameck.";
 
 function getTrafficScenarioLabel(id: string): string {
   switch (id) {
@@ -79,7 +98,10 @@ function computeTrafficOptimal(real: ChartPoint[], sim: ChartPoint[]): ChartPoin
   return out;
 }
 
-export function TrafficPage({ selectedArea }: TrafficPageProps) {
+export function TrafficPage({
+  selectedArea,
+  onRegisterExporter,
+}: TrafficPageProps) {
   const [mode, setMode] = useState<Mode>("REAL");
   const [optimize, setOptimize] = useState(false);
   const [simulateRun, setSimulateRun] = useState(0);
@@ -90,7 +112,13 @@ export function TrafficPage({ selectedArea }: TrafficPageProps) {
   const [flattenRatio, setFlattenRatio] = useState<number>(0);
   const [scenarioId, setScenarioId] = useState<string>("traffic_baseline");
   const [predictedTraffic, setPredictedTraffic] = useState<ChartPoint[]>([]);
+  const [predicting, setPredicting] = useState(false);
+  const [predictError, setPredictError] = useState<string | null>(null);
   const [optimalTraffic, setOptimalTraffic] = useState<ChartPoint[]>([]);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [exportTarget, setExportTarget] = useState<TrafficExportTarget | null>(
+    null,
+  );
   const zoneId = selectedArea ? selectedArea.name : null;
   const scenarioLabel = getTrafficScenarioLabel(scenarioId);
   const scenarioClass = getTrafficScenarioClass(scenarioId);
@@ -120,6 +148,63 @@ export function TrafficPage({ selectedArea }: TrafficPageProps) {
   const basePoints = trafficPoints;
 
   useEffect(() => {
+    if (!onRegisterExporter) return;
+    onRegisterExporter(() => {
+      setExportTarget({ kind: "page" });
+      setIsExportDialogOpen(true);
+    });
+  }, [onRegisterExporter]);
+
+  const runTrafficForecast = async () => {
+    setMode("REAL");
+    setOptimize(false);
+    setSimulateRun(0);
+    setPredictError(null);
+
+    if (!basePoints.length) {
+      setPredictedTraffic([]);
+      return;
+    }
+
+    setPredicting(true);
+    try {
+      const seriesPayload = basePoints.map((p) => ({ t: p.x, value: p.y }));
+      const data = await postJson<{
+        target: string;
+        items: { step: number; t: number; value: number }[];
+        used_model?: boolean;
+      }>("/ts/forecast", {
+        target: "traffic",
+        series: seriesPayload,
+        horizon: seriesPayload.length,
+        use_model: true,
+      });
+      const items = data.items ?? [];
+      if (items.length) {
+        const trimmed = items.slice(0, basePoints.length);
+        const mapped: ChartPoint[] = trimmed.map((it, idx) => ({
+          x: basePoints[idx].x,
+          y: Number(it.value ?? 0),
+        }));
+        setPredictedTraffic(mapped);
+      } else {
+        setPredictedTraffic(computeTrafficTrend(basePoints));
+      }
+    } catch (err) {
+      setPredictError(
+        err instanceof Error ? err.message : "Failed to compute forecast.",
+      );
+      setPredictedTraffic(computeTrafficTrend(basePoints));
+    } finally {
+      setPredicting(false);
+    }
+  };
+
+  const handlePredictClick = () => {
+    void runTrafficForecast();
+  };
+
+  useEffect(() => {
     if (mode === "SIMULATE" && optimize && basePoints.length && simulateTrafficPoints.length) {
       setOptimalTraffic(computeTrafficOptimal(basePoints, simulateTrafficPoints));
     }
@@ -141,6 +226,101 @@ export function TrafficPage({ selectedArea }: TrafficPageProps) {
   if (optimize && optimalTraffic.length === basePoints.length && optimalTraffic.length) {
     trafficSeries.push({ label: "Optimal", color: "#08c44d", points: optimalTraffic });
   }
+
+  const handleOpenFullExport = () => {
+    setExportTarget({ kind: "page" });
+    setIsExportDialogOpen(true);
+  };
+
+  const handleOpenTableExport = () => {
+    setExportTarget({ kind: "table", id: "volume" });
+    setIsExportDialogOpen(true);
+  };
+
+  const handleOpenChartExport = () => {
+    setExportTarget({ kind: "chart", id: "volume" });
+    setIsExportDialogOpen(true);
+  };
+
+  const buildExportPage = (target: TrafficExportTarget): ExportPage => {
+    const areaName = selectedArea?.name ?? "No area selected";
+    const description = selectedArea
+      ? `Traffic module for ${selectedArea.name} in ${mode} mode.`
+      : "Traffic module showing baseline hourly volume profile.";
+    const insightsText =
+      selectedArea && !loading && !error && insights ? insights : undefined;
+
+    const tables =
+      target.kind === "chart"
+        ? []
+        : [
+            {
+              title: "Hourly traffic volume",
+              columns: ["Hour", "Volume (veh/hr)"],
+              rows:
+                basePoints && basePoints.length
+                  ? basePoints.map((p) => [
+                      String(p.x),
+                      Math.round(p.y).toString(),
+                    ])
+                  : [["—", "—"]],
+            },
+          ];
+
+    const charts =
+      target.kind === "table"
+        ? []
+        : [
+            {
+              title: "Traffic Volume",
+              x_label: "Hour of day",
+              y_label: "Volume (veh/hr)",
+              series: trafficSeries.map((s) => ({
+                label: s.label,
+                points: s.points,
+              })),
+            },
+          ];
+
+    return {
+      page_name: "Traffic",
+      mode,
+      area_name: areaName,
+      area_id: selectedArea?.id ?? null,
+      description,
+      insights: insightsText,
+      tables,
+      charts,
+    };
+  };
+
+  const handleConfirmExport = async (format: ExportFormat) => {
+    if (!exportTarget) return;
+    const page = buildExportPage(exportTarget);
+    const payload: ExportPayload = {
+      export_format: format,
+      pages: [page],
+      footer_text: EXPORT_FOOTER_TEXT,
+    };
+
+    try {
+      const blob = await postBinary("/export", payload);
+      const areaNameFragment = selectedArea?.name
+        ? ` - ${selectedArea.name}`
+        : "";
+      const baseName =
+        exportTarget.kind === "page"
+          ? `SUSPS - Traffic${areaNameFragment}`
+          : exportTarget.kind === "table"
+          ? `SUSPS - Traffic - Volume table${areaNameFragment}`
+          : `SUSPS - Traffic - Volume chart${areaNameFragment}`;
+      const ext = format === "pdf" ? ".pdf" : format === "csv" ? ".csv" : ".zip";
+      downloadBlob(blob, `${baseName}${ext}`);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to export Traffic data", err);
+    }
+  };
 
   return (
     <div className="space-y-4 pb-16">
@@ -355,6 +535,8 @@ export function TrafficPage({ selectedArea }: TrafficPageProps) {
       )}
 
       <Table
+        title="Traffic volume table"
+        onExport={handleOpenTableExport}
         columns={["Hour", "Volume (veh/hr)"]}
         rows={
           selectedArea && basePoints.length > 0
@@ -406,12 +588,19 @@ export function TrafficPage({ selectedArea }: TrafficPageProps) {
           series={trafficSeries}
           xLabel="Hour of day"
           yLabel="Volume (veh/hr)"
+          onExport={handleOpenChartExport}
         />
         <HotspotMap optimize={optimize} zoneId={selectedArea?.name ?? null} />
       </div>
 
       {selectedArea && trafficLoading && (
         <p className="text-xs text-gray-500">Loading traffic series...</p>
+      )}
+      {selectedArea && predicting && !trafficLoading && (
+        <p className="text-xs text-gray-500">Computing forecast overlay...</p>
+      )}
+      {selectedArea && predictError && (
+        <p className="text-xs text-red-600">{predictError}</p>
       )}
       {selectedArea && mode === "SIMULATE" && simulateTrafficLoading && (
         <p className="text-xs text-gray-500">Loading simulated traffic...</p>
@@ -447,18 +636,20 @@ export function TrafficPage({ selectedArea }: TrafficPageProps) {
         )}
       </InsightsSection>
 
+      <ExportDialog
+        isOpen={isExportDialogOpen}
+        onClose={() => {
+          setIsExportDialogOpen(false);
+          setExportTarget(null);
+        }}
+        onConfirm={(format) => {
+          void handleConfirmExport(format);
+        }}
+      />
+
       <ActionToggle
         mode={mode}
-        onPredict={() => {
-          setMode("REAL");
-          setOptimize(false);
-          setSimulateRun(0);
-          if (trafficPoints.length) {
-            setPredictedTraffic(computeTrafficTrend(trafficPoints));
-          } else {
-            setPredictedTraffic([]);
-          }
-        }}
+        onPredict={handlePredictClick}
         onOptimize={() => {
           setOptimize(true);
           if (mode === "SIMULATE") {

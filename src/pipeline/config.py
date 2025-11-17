@@ -22,10 +22,40 @@ CITY_DIR = DATA_DIR / _CITY
 RAW_DIR = CITY_DIR / "raw"
 PROCESSED_DIR = CITY_DIR / "processed"
 
+# Domain-specific raw subdirectories to group raw inputs and ingest outputs.
+# These are created lazily by ensure_dirs but the pipeline remains backward
+# compatible with flat layouts under RAW_DIR.
+DEMOGRAPHICS_RAW_DIR = RAW_DIR / "Demographics_and_Population"
+ENERGY_RAW_DIR = RAW_DIR / "Energy_and_Infrastructure"
+ENVIRONMENT_RAW_DIR = RAW_DIR / "Environmental_and_Climate"
+MOBILITY_RAW_DIR = RAW_DIR / "Mobility_and_Transport"
+URBAN_GROWTH_RAW_DIR = RAW_DIR / "Urban_Growth"
+
 
 def ensure_dirs() -> None:
+    """Ensure raw/processed directories (and domain subfolders) exist.
+
+    Domain directories are recomputed from the current RAW_DIR on each call so
+    monkeypatching RAW_DIR in tests (or changing DATA_CITY) continues to work
+    as expected.
+    """
+
+    global DEMOGRAPHICS_RAW_DIR, ENERGY_RAW_DIR, ENVIRONMENT_RAW_DIR, MOBILITY_RAW_DIR, URBAN_GROWTH_RAW_DIR
+
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+
+    DEMOGRAPHICS_RAW_DIR = RAW_DIR / "Demographics_and_Population"
+    ENERGY_RAW_DIR = RAW_DIR / "Energy_and_Infrastructure"
+    ENVIRONMENT_RAW_DIR = RAW_DIR / "Environmental_and_Climate"
+    MOBILITY_RAW_DIR = RAW_DIR / "Mobility_and_Transport"
+    URBAN_GROWTH_RAW_DIR = RAW_DIR / "Urban_Growth"
+
+    DEMOGRAPHICS_RAW_DIR.mkdir(parents=True, exist_ok=True)
+    ENERGY_RAW_DIR.mkdir(parents=True, exist_ok=True)
+    ENVIRONMENT_RAW_DIR.mkdir(parents=True, exist_ok=True)
+    MOBILITY_RAW_DIR.mkdir(parents=True, exist_ok=True)
+    URBAN_GROWTH_RAW_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @dataclass(frozen=True)

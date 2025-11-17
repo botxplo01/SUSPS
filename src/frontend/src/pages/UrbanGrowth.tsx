@@ -8,14 +8,33 @@ import { HotspotMap } from "../components/Map";
 import { InsightsSection } from "../components/InsightsSection";
 import { FormattedInsights } from "../components/FormattedInsights";
 import { ActionToggle } from "../components/ActionToggle";
-import type { Area, Mode, ChartPoint, ChartSeries } from "../types";
+import { ExportDialog } from "../components/ExportDialog";
+import { postJson, postBinary, downloadBlob } from "../api";
+import type {
+  Area,
+  Mode,
+  ChartPoint,
+  ChartSeries,
+  ExportPayload,
+  ExportPage,
+  ExportFormat,
+} from "../types";
 import { useAdvisory } from "../hooks/useAdvisory";
 import { useGrowthSeries } from "../hooks/useSeries";
 import { useSimulationSeries } from "../hooks/useSimulation";
 
 interface UrbanGrowthPageProps {
   selectedArea: Area | null;
+  onRegisterExporter?: (fn: () => void) => void;
 }
+
+type GrowthExportTarget =
+  | { kind: "page" }
+  | { kind: "chart"; id: "population" }
+  | { kind: "table"; id: "population" };
+
+const EXPORT_FOOTER_TEXT =
+  "Smart Urban Simulation and Prediction System (SUSPS) — © 2025 Developed by David Lameck.";
 
 function getGrowthScenarioLabel(id: string): string {
   switch (id) {
@@ -83,7 +102,10 @@ function computeOptimalSeries(real: ChartPoint[], sim: ChartPoint[]): ChartPoint
   return out;
 }
 
-export function UrbanGrowthPage({ selectedArea }: UrbanGrowthPageProps) {
+export function UrbanGrowthPage({
+  selectedArea,
+  onRegisterExporter,
+}: UrbanGrowthPageProps) {
   const [mode, setMode] = useState<Mode>("REAL");
   const [optimize, setOptimize] = useState(false);
   const [simulateRun, setSimulateRun] = useState(0);
@@ -93,7 +115,13 @@ export function UrbanGrowthPage({ selectedArea }: UrbanGrowthPageProps) {
   const [shockPct, setShockPct] = useState<number>(0);
   const [scenarioId, setScenarioId] = useState<string>("growth_baseline");
   const [predictedGrowth, setPredictedGrowth] = useState<ChartPoint[]>([]);
+  const [predicting, setPredicting] = useState(false);
+  const [predictError, setPredictError] = useState<string | null>(null);
   const [optimalGrowth, setOptimalGrowth] = useState<ChartPoint[]>([]);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [exportTarget, setExportTarget] = useState<GrowthExportTarget | null>(
+    null,
+  );
   const zoneId = selectedArea ? selectedArea.name : null;
   const scenarioLabel = getGrowthScenarioLabel(scenarioId);
   const scenarioClass = getGrowthScenarioClass(scenarioId);
@@ -122,6 +150,63 @@ export function UrbanGrowthPage({ selectedArea }: UrbanGrowthPageProps) {
   const basePoints = growthPoints;
 
   useEffect(() => {
+    if (!onRegisterExporter) return;
+    onRegisterExporter(() => {
+      setExportTarget({ kind: "page" });
+      setIsExportDialogOpen(true);
+    });
+  }, [onRegisterExporter]);
+
+  const runGrowthForecast = async () => {
+    setMode("REAL");
+    setOptimize(false);
+    setSimulateRun(0);
+    setPredictError(null);
+
+    if (!basePoints.length) {
+      setPredictedGrowth([]);
+      return;
+    }
+
+    setPredicting(true);
+    try {
+      const seriesPayload = basePoints.map((p) => ({ t: p.x, value: p.y }));
+      const data = await postJson<{
+        target: string;
+        items: { step: number; t: number; value: number }[];
+        used_model?: boolean;
+      }>("/ts/forecast", {
+        target: "growth",
+        series: seriesPayload,
+        horizon: seriesPayload.length,
+        use_model: true,
+      });
+      const items = data.items ?? [];
+      if (items.length) {
+        const trimmed = items.slice(0, basePoints.length);
+        const mapped: ChartPoint[] = trimmed.map((it, idx) => ({
+          x: basePoints[idx].x,
+          y: Number(it.value ?? 0),
+        }));
+        setPredictedGrowth(mapped);
+      } else {
+        setPredictedGrowth(computeTrendSeries(basePoints));
+      }
+    } catch (err) {
+      setPredictError(
+        err instanceof Error ? err.message : "Failed to compute forecast.",
+      );
+      setPredictedGrowth(computeTrendSeries(basePoints));
+    } finally {
+      setPredicting(false);
+    }
+  };
+
+  const handlePredictClick = () => {
+    void runGrowthForecast();
+  };
+
+  useEffect(() => {
     if (mode === "SIMULATE" && optimize && basePoints.length && simulateGrowthPoints.length) {
       setOptimalGrowth(computeOptimalSeries(basePoints, simulateGrowthPoints));
     }
@@ -143,6 +228,101 @@ export function UrbanGrowthPage({ selectedArea }: UrbanGrowthPageProps) {
   if (optimize && optimalGrowth.length === basePoints.length && optimalGrowth.length) {
     growthSeries.push({ label: "Optimal", color: "#08c44d", points: optimalGrowth });
   }
+
+  const handleOpenFullExport = () => {
+    setExportTarget({ kind: "page" });
+    setIsExportDialogOpen(true);
+  };
+
+  const handleOpenTableExport = () => {
+    setExportTarget({ kind: "table", id: "population" });
+    setIsExportDialogOpen(true);
+  };
+
+  const handleOpenChartExport = () => {
+    setExportTarget({ kind: "chart", id: "population" });
+    setIsExportDialogOpen(true);
+  };
+
+  const buildExportPage = (target: GrowthExportTarget): ExportPage => {
+    const areaName = selectedArea?.name ?? "No area selected";
+    const description = selectedArea
+      ? `Urban Growth module for ${selectedArea.name} in ${mode} mode.`
+      : "Urban Growth module showing baseline population series.";
+    const insightsText =
+      selectedArea && !loading && !error && insights ? insights : undefined;
+
+    const tables =
+      target.kind === "chart"
+        ? []
+        : [
+            {
+              title: "Population by year",
+              columns: ["Year", "Population (people)"],
+              rows:
+                basePoints && basePoints.length
+                  ? basePoints.map((p) => [
+                      String(p.x),
+                      Math.round(p.y).toString(),
+                    ])
+                  : [["—", "—"]],
+            },
+          ];
+
+    const charts =
+      target.kind === "table"
+        ? []
+        : [
+            {
+              title: "Population Growth",
+              x_label: "Year",
+              y_label: "Population",
+              series: growthSeries.map((s) => ({
+                label: s.label,
+                points: s.points,
+              })),
+            },
+          ];
+
+    return {
+      page_name: "Urban Growth",
+      mode,
+      area_name: areaName,
+      area_id: selectedArea?.id ?? null,
+      description,
+      insights: insightsText,
+      tables,
+      charts,
+    };
+  };
+
+  const handleConfirmExport = async (format: ExportFormat) => {
+    if (!exportTarget) return;
+    const page = buildExportPage(exportTarget);
+    const payload: ExportPayload = {
+      export_format: format,
+      pages: [page],
+      footer_text: EXPORT_FOOTER_TEXT,
+    };
+
+    try {
+      const blob = await postBinary("/export", payload);
+      const areaNameFragment = selectedArea?.name
+        ? ` - ${selectedArea.name}`
+        : "";
+      const baseName =
+        exportTarget.kind === "page"
+          ? `SUSPS - Urban Growth${areaNameFragment}`
+          : exportTarget.kind === "table"
+          ? `SUSPS - Urban Growth - Population table${areaNameFragment}`
+          : `SUSPS - Urban Growth - Population chart${areaNameFragment}`;
+      const ext = format === "pdf" ? ".pdf" : format === "csv" ? ".csv" : ".zip";
+      downloadBlob(blob, `${baseName}${ext}`);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to export Urban Growth data", err);
+    }
+  };
 
   return (
     <div className="space-y-4 pb-16">
@@ -360,6 +540,8 @@ export function UrbanGrowthPage({ selectedArea }: UrbanGrowthPageProps) {
       )}
 
       <Table
+        title="Population table"
+        onExport={handleOpenTableExport}
         columns={["Year", "Population"]}
         rows={
           selectedArea && basePoints.length > 0
@@ -411,12 +593,19 @@ export function UrbanGrowthPage({ selectedArea }: UrbanGrowthPageProps) {
           series={growthSeries}
           xLabel="Year"
           yLabel="Population"
+          onExport={handleOpenChartExport}
         />
         <HotspotMap optimize={optimize} zoneId={selectedArea?.name ?? null} />
       </div>
 
       {selectedArea && growthLoading && (
         <p className="text-xs text-gray-500">Loading growth series...</p>
+      )}
+      {selectedArea && predicting && !growthLoading && (
+        <p className="text-xs text-gray-500">Computing forecast overlay...</p>
+      )}
+      {selectedArea && predictError && (
+        <p className="text-xs text-red-600">{predictError}</p>
       )}
       {selectedArea && mode === "SIMULATE" && simulateGrowthLoading && (
         <p className="text-xs text-gray-500">Loading simulated growth...</p>
@@ -455,18 +644,20 @@ export function UrbanGrowthPage({ selectedArea }: UrbanGrowthPageProps) {
         )}
       </InsightsSection>
 
+      <ExportDialog
+        isOpen={isExportDialogOpen}
+        onClose={() => {
+          setIsExportDialogOpen(false);
+          setExportTarget(null);
+        }}
+        onConfirm={(format) => {
+          void handleConfirmExport(format);
+        }}
+      />
+
       <ActionToggle
         mode={mode}
-        onPredict={() => {
-          setMode("REAL");
-          setOptimize(false);
-          setSimulateRun(0);
-          if (growthPoints.length) {
-            setPredictedGrowth(computeTrendSeries(growthPoints));
-          } else {
-            setPredictedGrowth([]);
-          }
-        }}
+        onPredict={handlePredictClick}
         onOptimize={() => {
           setOptimize(true);
           if (mode === "SIMULATE") {

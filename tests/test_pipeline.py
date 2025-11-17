@@ -19,8 +19,9 @@ def test_pipeline_end_to_end(tmp_path: Path, monkeypatch):
 
     # Run steps
     ingest.main()
-    assert (raw_dir / "worldpop_summary.csv").exists()
-    assert (raw_dir / "energy_demand.csv").exists()
+    # Ingest should now route raw outputs into domain-specific subfolders
+    assert (raw_dir / "Demographics_and_Population" / "worldpop_summary.csv").exists()
+    assert (raw_dir / "Energy_and_Infrastructure" / "energy_demand.csv").exists()
 
     preprocess.main()
     assert (processed_dir / "worldpop_features.csv").exists()

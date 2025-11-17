@@ -35,3 +35,29 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
   }
   return (await res.json()) as T;
 }
+
+export async function postBinary(path: string, body: unknown): Promise<Blob> {
+  const url = new URL(path, API_BASE_URL);
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body ?? {}),
+  });
+  if (!res.ok) {
+    throw new Error(`Request failed with status ${res.status}`);
+  }
+  return await res.blob();
+}
+
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}

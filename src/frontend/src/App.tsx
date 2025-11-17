@@ -13,6 +13,7 @@ export default function App() {
   const [selectedArea, setSelectedArea] = useState<Area | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [pageExporter, setPageExporter] = useState<(() => void) | null>(null);
 
   return (
     <div className="flex h-screen bg-neutral-100">
@@ -45,6 +46,7 @@ export default function App() {
             setSelectedArea(area);
             setIsSidebarOpen(false);
           }}
+          onExportPage={pageExporter ? () => pageExporter() : undefined}
         />
         <main className="flex-1 p-4 flex flex-col">
           <div className="flex-1">
@@ -52,19 +54,39 @@ export default function App() {
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route
                 path="/dashboard"
-                element={<DashboardPage selectedArea={selectedArea} />}
+                element={
+                  <DashboardPage
+                    selectedArea={selectedArea}
+                    onRegisterExporter={(fn) => setPageExporter(() => fn)}
+                  />
+                }
               />
               <Route
                 path="/urban-growth"
-                element={<UrbanGrowthPage selectedArea={selectedArea} />}
+                element={
+                  <UrbanGrowthPage
+                    selectedArea={selectedArea}
+                    onRegisterExporter={(fn) => setPageExporter(() => fn)}
+                  />
+                }
               />
               <Route
                 path="/energy"
-                element={<EnergyPage selectedArea={selectedArea} />}
+                element={
+                  <EnergyPage
+                    selectedArea={selectedArea}
+                    onRegisterExporter={(fn) => setPageExporter(() => fn)}
+                  />
+                }
               />
               <Route
                 path="/traffic"
-                element={<TrafficPage selectedArea={selectedArea} />}
+                element={
+                  <TrafficPage
+                    selectedArea={selectedArea}
+                    onRegisterExporter={(fn) => setPageExporter(() => fn)}
+                  />
+                }
               />
             </Routes>
           </div>

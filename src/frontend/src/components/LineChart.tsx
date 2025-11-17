@@ -8,6 +8,7 @@ interface LineChartProps {
   xLabel?: string;
   yLabel?: string;
   showGrid?: boolean;
+  onExport?: () => void;
 }
 
 export function LineChart({
@@ -18,6 +19,7 @@ export function LineChart({
   xLabel,
   yLabel,
   showGrid = true,
+  onExport,
 }: LineChartProps) {
   const singlePoints = data ?? [];
   const hasSeries = !!series && series.length > 0;
@@ -86,7 +88,7 @@ export function LineChart({
   })();
 
   return (
-    <section className="flex flex-col rounded-xl bg-white p-4 shadow-sm">
+    <section className="relative flex flex-col rounded-xl bg-white p-4 shadow-sm">
       {title && (
         <div className="mb-2 flex items-center justify-between gap-2 text-sm font-semibold text-gray-800">
           <span>{title}</span>
@@ -227,6 +229,25 @@ export function LineChart({
             )}
           </svg>
         </div>
+      )}
+      {onExport && (
+        <button
+          type="button"
+          onClick={onExport}
+          className="absolute bottom-3 right-3 inline-flex h-8 w-8 items-center justify-center rounded-full bg-blue-900 text-white shadow-sm hover:bg-blue-800"
+          aria-label="Export chart"
+        >
+          <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true">
+            <path
+              d="M10 2a.75.75 0 01.75.75v7.19l2.22-2.22a.75.75 0 111.06 1.06l-3.5 3.5a.75.75 0 01-1.06 0l-3.5-3.5a.75.75 0 111.06-1.06l2.22 2.22V2.75A.75.75 0 0110 2z"
+              className="fill-current"
+            />
+            <path
+              d="M4 12.75a.75.75 0 011.5 0v1.5h9v-1.5a.75.75 0 011.5 0v2.25A1.25 1.25 0 0114.75 16H5.25A1.25 1.25 0 014 15.25z"
+              className="fill-current"
+            />
+          </svg>
+        </button>
       )}
     </section>
   );
