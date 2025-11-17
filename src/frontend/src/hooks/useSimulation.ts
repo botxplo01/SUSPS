@@ -18,6 +18,7 @@ interface SimulationRunResponse {
 interface UseSimulationOptions {
   areaId?: number | null;
   parameters?: Record<string, unknown>;
+  runKey?: number;
 }
 
 export function useSimulationSeries(
@@ -25,13 +26,13 @@ export function useSimulationSeries(
   enabled: boolean,
   options?: UseSimulationOptions,
 ): SimulationSeriesResult {
-  const { areaId, parameters } = options ?? {};
+  const { areaId, parameters, runKey = 0 } = options ?? {};
   const [points, setPoints] = useState<ChartPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!enabled || areaId == null) {
+    if (!enabled || areaId == null || runKey === 0) {
       setPoints([]);
       setError(null);
       setLoading(false);
@@ -93,7 +94,7 @@ export function useSimulationSeries(
     return () => {
       cancelled = true;
     };
-  }, [module, enabled, areaId, JSON.stringify(parameters ?? {})]);
+  }, [module, enabled, areaId, runKey]);
 
   return { points, loading, error };
 }

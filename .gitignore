@@ -11,6 +11,10 @@ venv/
 .env aliased local.example
 .env aliased render.example
 
+# In Development
+to_consider.md
+in_dev.txt
+
 # Data
 /data/*
 !/data/raw/.gitkeep
@@ -53,3 +57,5 @@ console_export.log
 # Temp / local artifacts
 /tmp_project_items.json
 
+# Running
+run.md

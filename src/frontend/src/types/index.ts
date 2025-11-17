@@ -11,6 +11,12 @@ export interface ChartPoint {
   y: number;
 }
 
+export interface ChartSeries {
+  label: string;
+  color: string;
+  points: ChartPoint[];
+}
+
 export interface HotspotArea {
   admin_unit: string;
   population?: number;

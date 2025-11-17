@@ -4,10 +4,30 @@ import type { Area } from "../types";
 import { fetchJson } from "../api";
 
 const navItems = [
-  { to: "/dashboard", label: "Dashboard" },
-  { to: "/urban-growth", label: "Urban Growth" },
-  { to: "/energy", label: "Energy" },
-  { to: "/traffic", label: "Traffic" },
+  {
+    to: "/dashboard",
+    label: "Dashboard",
+    borderClass: "border-[#62d9c5]",
+    iconActiveClass: "border-[#62d9c5] bg-[#62d9c5]/20",
+  },
+  {
+    to: "/urban-growth",
+    label: "Urban Growth",
+    borderClass: "border-[#8cff47]",
+    iconActiveClass: "border-[#8cff47] bg-[#8cff47]/20",
+  },
+  {
+    to: "/energy",
+    label: "Energy",
+    borderClass: "border-[#ff9d14]",
+    iconActiveClass: "border-[#ff9d14] bg-[#ff9d14]/20",
+  },
+  {
+    to: "/traffic",
+    label: "Traffic",
+    borderClass: "border-[#ff4444]",
+    iconActiveClass: "border-[#ff4444] bg-[#ff4444]/20",
+  },
 ];
 
 interface SidebarProps {
@@ -311,7 +331,7 @@ export function Sidebar({
                         }`
                       : `block px-3 py-2 text-base transition transform border-l-4 ${
                           isActive
-                            ? "bg-[#181818] text-white font-bold scale-105 rounded-none border-[#62d9c5]"
+                            ? `bg-[#181818] text-white font-bold scale-105 rounded-none ${item.borderClass}`
                             : "text-gray-200 hover:bg-neutral-700 scale-100 rounded-md border-transparent"
                         }`
                   }
@@ -322,7 +342,7 @@ export function Sidebar({
                         isCollapsed
                           ? `flex h-8 w-8 items-center justify-center rounded-full border transition-transform ${
                               isActive
-                                ? "border-[#62d9c5] bg-[#62d9c5]/20 scale-110"
+                                ? `${item.iconActiveClass} scale-110`
                                 : "border-transparent bg-transparent scale-100"
                             }`
                           : "flex h-6 w-6 items-center justify-center"

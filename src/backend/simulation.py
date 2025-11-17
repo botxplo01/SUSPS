@@ -4,9 +4,32 @@ from typing import Any, Dict, List
 
 
 def _get_float(params: Dict[str, Any], key: str, default: float) -> float:
+    """Best-effort float extraction from a parameters dict.
+
+    Keeps simulation helpers tolerant of missing or malformed values.
+    """
     try:
-        v = params.get(key, default)
-        return float(v)
+        raw = params.get(key, default)
+    except Exception:
+        return default
+
+    if raw is None:
+        return default
+
+    if isinstance(raw, (int, float)):
+        return float(raw)
+
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if not raw:
+            return default
+        try:
+            return float(raw)
+        except Exception:
+            return default
+
+    try:
+        return float(raw)  # type: ignore[arg-type]
     except Exception:
         return default
 
@@ -15,17 +38,23 @@ def simulate_growth(
     base_items: List[Dict[str, Any]],
     params: Dict[str, Any] | None = None,
 ) -> List[Dict[str, Any]]:
-    """Apply simple scenario adjustments to growth projections.
+    """Apply scenario adjustments to growth projections.
 
     This is a lightweight, deterministic simulation layer over the existing
-    growth model output. It is intentionally simple and free of external
-    dependencies so it works in both local and Render environments
-    without paid APIs or closed-source models.
+    growth model output. It stays free of external dependencies so it works in
+    both local and Render environments without paid APIs or closed-source
+    models.
 
     Supported parameters (all optional):
     - population_scale: multiplier applied to all predicted_population values.
     - annual_rate_delta_pct: percentage delta applied to an inferred annual
       growth rate (e.g. +10 means +10% faster growth, -20 means slower).
+    - min_annual_rate_pct / max_annual_rate_pct: clamp the effective annual
+      growth rate within these bounds (defaults roughly match pipeline bounds
+      of [-2%, 8%]).
+    - shock_year: optional calendar year in which a one-off shock is applied.
+    - shock_pct: percentage shock to population for shock_year
+      (e.g. +10 increases that year by 10% on top of the trend).
     """
 
     if not base_items:
@@ -34,8 +63,19 @@ def simulate_growth(
     params = params or {}
     pop_scale = _get_float(params, "population_scale", 1.0)
     rate_delta_pct = _get_float(params, "annual_rate_delta_pct", 0.0)
+    min_rate_pct = _get_float(params, "min_annual_rate_pct", -2.0)
+    max_rate_pct = _get_float(params, "max_annual_rate_pct", 8.0)
 
-    # Infer a baseline annual rate from the first two points if possible
+    shock_year_val = params.get("shock_year")
+    shock_year = None
+    if shock_year_val is not None:
+        try:
+            shock_year = int(shock_year_val)
+        except Exception:
+            shock_year = None
+    shock_pct = _get_float(params, "shock_pct", 0.0)
+
+    # Infer a baseline annual rate from the first two points if possible.
     inferred_rate = 0.0
     if len(base_items) >= 2:
         try:
@@ -45,10 +85,6 @@ def simulate_growth(
                 inferred_rate = (y1 - y0) / y0
         except Exception:
             inferred_rate = 0.0
-
-    # Adjust rate by the delta percentage (e.g. +10% => rate * 1.1)
-    rate_factor = 1.0 + (rate_delta_pct / 100.0)
-    adjusted_rate = inferred_rate * rate_factor
 
     # If we could not infer a rate, fall back to pure scaling.
     if inferred_rate == 0.0:
@@ -62,6 +98,14 @@ def simulate_growth(
             }
             for item in base_items
         ]
+
+    # Convert to percentage space, apply delta and clamp, then convert back.
+    inferred_rate_pct = inferred_rate * 100.0
+    effective_rate_pct = inferred_rate_pct + rate_delta_pct
+    if max_rate_pct < min_rate_pct:
+        max_rate_pct, min_rate_pct = min_rate_pct, max_rate_pct
+    effective_rate_pct = max(min(effective_rate_pct, max_rate_pct), min_rate_pct)
+    adjusted_rate = effective_rate_pct / 100.0
 
     # Recompute the series starting from the first year using the adjusted rate.
     try:
@@ -81,32 +125,40 @@ def simulate_growth(
         ]
 
     simulated: List[Dict[str, Any]] = []
-    pop = base_pop
+    pop = max(base_pop, 0.0)
     for i, _ in enumerate(base_items):
         year = base_year + i
         if i > 0:
             pop = pop * (1.0 + adjusted_rate)
+        # Apply a one-off population shock for the specified year.
+        if shock_year is not None and year == shock_year:
+            pop = pop * (1.0 + shock_pct / 100.0)
         simulated.append(
             {
                 "year": year,
-                "predicted_population": int(pop),
+                "predicted_population": int(max(pop, 0.0)),
                 "mode": "SIMULATE",
             }
         )
     return simulated
 
-
 def simulate_energy(
     base_items: List[Dict[str, Any]],
     params: Dict[str, Any] | None = None,
 ) -> List[Dict[str, Any]]:
-    """Apply simple scenario adjustments to hourly energy demand.
+    """Apply scenario adjustments to hourly energy demand.
 
     Supported parameters (all optional):
     - demand_scale: global multiplier for demand_mwh.
     - peak_hour_shift: integer hour shift for peak load (positive shifts peak
       later in the day, negative shifts earlier). This is applied with a simple
       rotation over the 24h profile.
+    - peak_scale: additional multiplier applied to a fixed set of peak hours
+      (07–08 and 17–18) after rotation.
+    - offpeak_scale: multiplier applied to non-peak hours (default 1.0).
+    - flatten_ratio: 0..1 factor that pulls values toward the daily average
+      (0 = no change, 1 = fully flattened profile at the mean).
+    - max_demand_mwh: optional cap on hourly demand (<=0 disables the cap).
     """
 
     if not base_items:
@@ -115,6 +167,15 @@ def simulate_energy(
     params = params or {}
     demand_scale = _get_float(params, "demand_scale", 1.0)
     peak_shift = int(_get_float(params, "peak_hour_shift", 0.0))
+    peak_scale = _get_float(params, "peak_scale", 1.0)
+    offpeak_scale = _get_float(params, "offpeak_scale", 1.0)
+    flatten_ratio = _get_float(params, "flatten_ratio", 0.0)
+    max_demand_mwh = _get_float(params, "max_demand_mwh", -1.0)
+
+    if flatten_ratio < 0.0:
+        flatten_ratio = 0.0
+    if flatten_ratio > 1.0:
+        flatten_ratio = 1.0
 
     # Normalize to 0-23 and rotate if requested.
     items = list(base_items)
@@ -126,16 +187,38 @@ def simulate_energy(
         for h, it in enumerate(items):
             it["hour"] = h
 
-    simulated: List[Dict[str, Any]] = []
+    # Apply scaling, then optional flattening and capping.
+    peak_hours = {7, 8, 17, 18}
+    hours: List[int] = []
+    values: List[float] = []
+
     for it in items:
+        h = int(it.get("hour", 0))
+        hours.append(h)
         try:
-            v = float(it.get("demand_mwh", 0.0)) * demand_scale
+            base_v = float(it.get("demand_mwh", 0.0))
         except Exception:
-            v = 0.0
+            base_v = 0.0
+        v = base_v * demand_scale
+        if h in peak_hours:
+            v *= peak_scale
+        else:
+            v *= offpeak_scale
+        values.append(v)
+
+    if values and flatten_ratio > 0.0:
+        avg = sum(values) / float(len(values))
+        values = [v * (1.0 - flatten_ratio) + avg * flatten_ratio for v in values]
+
+    if max_demand_mwh > 0.0:
+        values = [min(v, max_demand_mwh) for v in values]
+
+    simulated: List[Dict[str, Any]] = []
+    for h, v in zip(hours, values):
         simulated.append(
             {
-                "hour": int(it.get("hour", 0)),
-                "demand_mwh": float(v),
+                "hour": int(h),
+                "demand_mwh": float(max(v, 0.0)),
                 "mode": "SIMULATE",
             }
         )
@@ -146,12 +229,18 @@ def simulate_traffic(
     base_items: List[Dict[str, Any]],
     params: Dict[str, Any] | None = None,
 ) -> List[Dict[str, Any]]:
-    """Apply simple scenario adjustments to hourly traffic volumes.
+    """Apply scenario adjustments to hourly traffic volumes.
 
     Supported parameters (all optional):
     - volume_scale: global multiplier for volume.
     - peak_hour_shift: integer hour shift for rush-hour peaks, similar to
       simulate_energy.
+    - peak_scale: additional multiplier applied to morning/evening peak hours
+      (07–09 and 16–19) after rotation.
+    - offpeak_scale: multiplier applied to non-peak hours (default 1.0).
+    - flatten_ratio: 0..1 factor that pulls volumes toward the daily average
+      (0 = no change, 1 = fully flattened profile at the mean).
+    - max_volume: optional cap on hourly volume (<=0 disables the cap).
     """
 
     if not base_items:
@@ -160,6 +249,15 @@ def simulate_traffic(
     params = params or {}
     volume_scale = _get_float(params, "volume_scale", 1.0)
     peak_shift = int(_get_float(params, "peak_hour_shift", 0.0))
+    peak_scale = _get_float(params, "peak_scale", 1.0)
+    offpeak_scale = _get_float(params, "offpeak_scale", 1.0)
+    flatten_ratio = _get_float(params, "flatten_ratio", 0.0)
+    max_volume = _get_float(params, "max_volume", -1.0)
+
+    if flatten_ratio < 0.0:
+        flatten_ratio = 0.0
+    if flatten_ratio > 1.0:
+        flatten_ratio = 1.0
 
     items = list(base_items)
     if peak_shift % 24 != 0 and len(items) == 24:
@@ -169,16 +267,38 @@ def simulate_traffic(
         for h, it in enumerate(items):
             it["hour"] = h
 
-    simulated: List[Dict[str, Any]] = []
+    # Apply scaling, then optional flattening and capping.
+    peak_hours = {7, 8, 9, 16, 17, 18, 19}
+    hours: List[int] = []
+    values: List[float] = []
+
     for it in items:
+        h = int(it.get("hour", 0))
+        hours.append(h)
         try:
-            v = int(float(it.get("volume", 0)) * volume_scale)
+            base_v = float(it.get("volume", 0))
         except Exception:
-            v = 0
+            base_v = 0.0
+        v = base_v * volume_scale
+        if h in peak_hours:
+            v *= peak_scale
+        else:
+            v *= offpeak_scale
+        values.append(v)
+
+    if values and flatten_ratio > 0.0:
+        avg = sum(values) / float(len(values))
+        values = [v * (1.0 - flatten_ratio) + avg * flatten_ratio for v in values]
+
+    if max_volume > 0.0:
+        values = [min(v, max_volume) for v in values]
+
+    simulated: List[Dict[str, Any]] = []
+    for h, v in zip(hours, values):
         simulated.append(
             {
-                "hour": int(it.get("hour", 0)),
-                "volume": v,
+                "hour": int(h),
+                "volume": int(max(round(v), 0)),
                 "mode": "SIMULATE",
             }
         )

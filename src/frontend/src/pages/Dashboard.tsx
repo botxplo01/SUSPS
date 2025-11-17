@@ -2,6 +2,7 @@ import { AreaBadge } from "../components/AreaBadge";
 import { DescriptionSection } from "../components/DescriptionSection";
 import { LineChart } from "../components/LineChart";
 import { BarChart } from "../components/BarChart";
+import { Histogram } from "../components/Histogram";
 import { HotspotMap } from "../components/Map";
 import { InsightsSection } from "../components/InsightsSection";
 import { FormattedInsights } from "../components/FormattedInsights";
@@ -16,7 +17,7 @@ interface DashboardPageProps {
 export function DashboardPage({ selectedArea }: DashboardPageProps) {
   const zoneId = selectedArea ? selectedArea.name : null;
   const areaId = selectedArea ? selectedArea.id : null;
-  const { insights, loading, error } = useAdvisory("dashboard", zoneId);
+  const { insights, loading, error } = useAdvisory("dashboard", zoneId, "baseline");
   const { points: growthPoints } = useGrowthSeries(areaId);
   const { points: energyPoints } = useEnergySeries(areaId);
   const { points: trafficPoints } = useTrafficSeries(areaId);
@@ -30,13 +31,19 @@ export function DashboardPage({ selectedArea }: DashboardPageProps) {
       <DescriptionSection title="System Overview">
         {selectedArea ? (
           <>
-            This dashboard summarizes urban growth, energy, and traffic for the
-            selected area. Use the navigation to explore each module in more
-            detail.
+            This dashboard shows the baseline (REAL) data that the system has
+            ingested for {selectedArea.name} across urban growth, hourly energy
+            demand, and traffic volumes. The charts below summarize the same
+            underlying time series that each domain page uses: population by year,
+            energy demand by hour of day, and traffic volumes by hour of day.
+            Scenario-based SIMULATE views and parameter controls live on the
+            individual Urban Growth, Energy, and Traffic pages.
           </>
         ) : (
           <>
-            Select an area from the sidebar to load data-driven summaries.
+            Select an area from the sidebar to load baseline (REAL) summaries of
+            population, energy demand, and traffic. You can then switch to the
+            individual modules to explore SIMULATE scenarios in more detail.
           </>
         )}
       </DescriptionSection>
@@ -49,7 +56,7 @@ export function DashboardPage({ selectedArea }: DashboardPageProps) {
           xLabel="Year"
           yLabel="Population"
         />
-        <BarChart
+        <LineChart
           title="Energy Summary"
           data={energyPoints}
           accentColor="#f87b14"
@@ -59,7 +66,7 @@ export function DashboardPage({ selectedArea }: DashboardPageProps) {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <LineChart
+        <Histogram
           title="Traffic Summary"
           data={trafficPoints}
           accentColor="#f24152"

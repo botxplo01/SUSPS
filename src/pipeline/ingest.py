@@ -6,8 +6,10 @@ import os
 import pandas as pd
 import requests
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 
 from . import config
+from .osm_overpass import fetch_osm_for_city_bbox, save_geojson
 
 # --- Helpers ---
 
@@ -281,6 +283,39 @@ def fetch_traffic() -> pd.DataFrame:
         return fallback
 
 
+# --- OSM / Overpass (optional, env-gated) ---
+
+
+def _truthy(val: Optional[str]) -> bool:
+    return str(val).lower() in {"1", "true", "yes", "on"}
+
+
+def fetch_osm_snapshot() -> Optional[Path]:
+    """Optionally fetch an OSM snapshot via Overpass and save as GeoJSON.
+
+    This is guarded by the SUSPS_FETCH_OSM environment variable to keep the
+    default pipeline fully offline and deterministic (including under pytest).
+    When enabled, it queries a city-scale bounding box around CITY_LAT/CITY_LON
+    and writes `osm_snapshot.geojson` under RAW_DIR for reuse.
+    """
+
+    if not _truthy(os.getenv("SUSPS_FETCH_OSM")):
+        return None
+
+    try:
+        lat, lon = _city_coords()
+        gj = fetch_osm_for_city_bbox(lat, lon)
+        if not gj.get("features"):
+            return None
+        config.ensure_dirs()
+        out_path = config.RAW_DIR / "osm_snapshot.geojson"
+        save_geojson(gj, out_path)
+        return out_path
+    except Exception:
+        # Network or Overpass errors should never break the core pipeline.
+        return None
+
+
 # --- Air quality (OpenAQ if key; fallback to existing CSV) ---
 
 
@@ -387,6 +422,7 @@ def main() -> None:
     env_path = save_raw(env, "environment_monthly")
     aq_path = save_raw(aq, "air_quality_raw") if not aq.empty else None
     se_path = save_raw(se, "socioeconomic")
+    osm_path = fetch_osm_snapshot()
 
     print(f"Saved: {wp_path}")
     print(f"Saved: {ed_path}")
@@ -395,6 +431,8 @@ def main() -> None:
     if aq_path:
         print(f"Saved: {aq_path}")
     print(f"Saved: {se_path}")
+    if osm_path:
+        print(f"Saved: {osm_path}")
 
 
 if __name__ == "__main__":

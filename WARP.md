@@ -103,7 +103,7 @@ Notes
   - Backend endpoint `/advisory/{scope}` compiles recent predictions (DB → processed → synthetic), optionally scoped by `zone_id` (selected area), builds a compact summary, and queries a Hugging Face model for insights via the free Inference API.
   - The advisory engine now incorporates the selected `zone_id` into its prompt and cache key so guidance can be area-specific while remaining deterministic and cached.
   - Default model: `meta-llama/Meta-Llama-3.1-8B-Instruct` with a lightweight fallback `TinyLlama/TinyLlama-1.1B-Chat-v1.0` (free-tier friendly).
-  - The React SPA shows an “Insights” panel on the Dashboard, Urban Growth, Energy, and Traffic pages that calls the advisory endpoint with the currently selected area (when available) and renders markdown.
+  - The React SPA shows an “Insights” panel on the Dashboard, Urban Growth, Energy, and Traffic pages that calls the advisory endpoint with the currently selected area (when available) and renders formatted plain-text paragraphs (markdown syntax stripped) with only key headings bolded.
 - Configuration:
   - Env vars: `HF_API_KEY` (preferred; see `.env`) or, if needed, `HF_API_TOKEN` / `HUGGINGFACEHUB_API_TOKEN`.
   - Optional: `HF_MODEL_NAME` to override the default advisory/chat model, plus specialized models
@@ -130,6 +130,7 @@ SUSPS is organized around a lightweight FastAPI API plus a separate React SPA fr
 
 - Data pipeline (file-based artifacts)
   - Modules under `src/pipeline/` generate small CSV artifacts to `data/<CITY>/raw/` and `data/<CITY>/processed/`. Paths are centralized in `src/pipeline/config.py` and created on demand. External dataset locations are read from environment variables when provided.
+  - Overpass/OSM integration: `src/pipeline/osm_overpass.py` provides a small Overpass client (bbox, named area, polygon) that returns GeoJSON. `src/pipeline/ingest.py` can optionally call this client and persist an `osm_snapshot.geojson` into `data/<CITY>/raw/` when `SUSPS_FETCH_OSM=1` (disabled by default so tests and local runs remain offline and deterministic).
 
 
 - Tests
@@ -146,25 +147,28 @@ Key URLs
 - Areas & metadata: `/areas`, `/processed_data`, `/simulation_inputs`
 - Simulation & time-series: `/simulate/run`, `/simulation_inputs` (POST), `/ts/forecast`
 - Hotspots: `/hotspots/areas`, `/hotspots/areas/forecast`
-- AI Advisory: `/advisory/{scope}` where `scope` ∈ {`dashboard`,`growth`,`energy`,`traffic`} (returns markdown insights)
+- AI Advisory: `/advisory/{scope}` where `scope` ∈ {`dashboard`,`growth`,`energy`,`traffic`} (returns markdown-like insights that the frontend renders as plain paragraphs with key headings bolded). The endpoint accepts `zone_id` and optional `scenario` (e.g. `growth_baseline`, `growth_simulate`, `energy_demand_response`), which are included in the HF prompt and in the cache key so advisory can distinguish between baseline and SIMULATE scenarios.
 - AI Advisory Batch: `/advisory_batch?scopes=dashboard,energy` (returns multiple scopes in one call)
 
 ### Frontend map for agents (what each page talks to)
 
 - Dashboard (React route `/dashboard`)
   - Sidebar: `area-select` dropdown populated from `/areas`. No data is loaded into the main charts until an area is selected.
-  - Charts: growth, energy, traffic, plus summary tiles; use `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary`.
+  - Charts: bar chart for urban growth, line chart for energy, and histogram for traffic, plus summary tiles; all use `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary` in REAL mode only (the dashboard does not show Real/Simulate or Action toggles).
   - Behavior: when no area is selected, graphs render placeholder figures with "(select an area)" in the title and the page shows descriptive text only; once an area is selected, charts call the live API endpoints (which internally prefer DB/processed data with synthetic fallback as needed).
-  - Advisory: "Insights" panel is gated on area selection and then calls `/advisory/dashboard` (or batch) and renders markdown.
+  - Advisory: "Insights" panel is gated on area selection and then calls `/advisory/dashboard` (or batch) and renders formatted plain-text paragraphs with only key headings bolded.
 - Growth page
   - Shares the same `area-select` gate as the dashboard and uses `/growth` for the current city/area context.
   - Shows only descriptions until an area is selected; then renders the growth series and `/advisory/growth` insights.
+  - SIMULATE: header `ModeToggle` (Real/Simulate) and floating `ActionToggle` drive `/simulate/run` with growth-specific parameters such as `population_scale`, `annual_rate_delta_pct`, and optional `shock_year`/`shock_pct`. The UI exposes these as sliders/inputs in a "Simulation parameters" panel.
 - Energy page
   - Uses `/energy` and `/energy/summary` for the selected city/area.
   - Same area gating and description-first behavior; advisory via `/advisory/energy`.
+  - SIMULATE: `ModeToggle` + `ActionToggle` call `/simulate/run` with energy parameters including `demand_scale`, `peak_hour_shift`, `peak_scale`, `offpeak_scale`, and `flatten_ratio`, controlled via a simulation parameters panel (e.g. demand response or time-of-use tariff scenarios).
 - Traffic page
   - Uses `/traffic` and `/traffic/summary` for the selected city/area.
   - Same area gating and description-first behavior; advisory via `/advisory/traffic`.
+  - SIMULATE: uses `/simulate/run` with traffic parameters such as `volume_scale`, `peak_hour_shift`, `peak_scale`, `offpeak_scale`, and `flatten_ratio`, controlled by a simulation parameters panel to represent scenarios like remote work adoption or congestion pricing.
 - Hotspot maps (React UI + OSM-based overlays)
   - Backend and pipeline are ready: `/hotspots/areas` and `/hotspots/areas/forecast` expose static and multi-year hotspot scores.
   - React frontend renders an OpenStreetMap-based Leaflet map that overlays hotspot scores from `/hotspots/areas` and `/hotspots/areas/forecast` as soft translucent red circles; when Optimize is active, improving areas (based on forecast vs current scores) are highlighted in soft translucent green as potential optimal zones.
@@ -216,11 +220,13 @@ Examples (API responses, truncated):
   - Mobile: off-canvas panel opened via a top-left hamburger; the same nav icons are shown, and the sidebar can collapse to an icon-only rail on larger screens using a small edge toggle.
 - Area search is available both in the sidebar (desktop) and as a top-of-header search bar on mobile; both feed the same `/areas` suggestions and update the shared `selectedArea` state.
 - Implemented shared API helpers and hooks (`api.ts`, `useAdvisory`, `useGrowthSeries`, `useEnergySeries`, `useTrafficSeries`) to fetch REAL data series and advisory insights from the FastAPI backend.
-- Implemented minimalist SVG-based `BarChart`, `LineChart`, and `Histogram` components (no gridlines) that display REAL growth, energy, and traffic series once an area is selected, all using a unified accent color for bars/lines and small chart icons in the titles.
-- Wired REAL vs SIMULATE modes on the Urban Growth, Energy, and Traffic pages to the `/simulate/run` endpoint via a dedicated simulation hook, including simple parameter controls for exploring scenarios.
-- Implemented an OSM-based Leaflet map component that overlays `/hotspots/areas` and `/hotspots/areas/forecast`, showing dense population, congestion, and inefficient energy usage as soft translucent red regions and highlighting improving areas as soft translucent green "optimal zones" when Optimize is active; hooked this into a floating `ActionToggle` (Predict/Optimize/Simulate) positioned at the bottom-right with project-specified colors. A simple "optimal zones" concept exists today (green hotspots and a derived optimal-zones list), and advisory panels include contextual text that references these green zones when Optimize is active.
+- Implemented SVG-based `BarChart`, `LineChart`, and `Histogram` components with axes, tick labels, light gridlines, and centered layout that display REAL growth, energy, and traffic series once an area is selected, using a unified title icon shape and page-specific accent colors (Urban Growth: bar chart, #91e03f; Energy: line chart, #f87b14; Traffic: histogram, #f24152; same mapping used on the dashboard summary charts).
+- Extended charts to support multiple overlaid series with a colour key legend for **Real**, **Predicted**, **Simulated**, and **Optimal** curves/bars; colours are coordinated across pages (Predicted: `#de3388`, Simulated: `#1b55ce`, Optimal: `#08c44d`, plus the existing per-domain REAL accents).
+- Wired REAL vs SIMULATE modes on the Urban Growth, Energy, and Traffic pages via a header `ModeToggle` (Real/Simulate) and a floating `ActionToggle` (Predict/Optimize/Simulate) that only highlights the chosen action and includes small click animations. The Simulate button is hidden in REAL mode and, when visible, triggers `/simulate/run` via `useSimulationSeries` only when clicked (no auto-run on mode switch), using page-specific parameters.
+- In REAL mode, clicking **Predict** computes a deterministic trend-based "Predicted" overlay from the current REAL series and displays it both in the charts and as bracketed values in the tables (e.g., `123,000 (130,000)` in `#de3388`). In SIMULATE mode, clicking **Simulate** overlays the SIMULATE series (in `#1b55ce`) similarly; when **Optimize** is active, an "Optimal" series is derived from REAL+SIMULATE and overlaid in `#08c44d`, with matching brackets in the tables; the simulation-parameter cards use a warm `#fffcf3` background to visually tie SIMULATE mode together.
+- Implemented an OSM-based Leaflet map component that overlays `/hotspots/areas` and `/hotspots/areas/forecast`, showing dense population, congestion, and inefficient energy usage in soft translucent red regions and highlighting improving areas as soft translucent green "optimal zones" when Optimize is active; hooked this into a floating `ActionToggle` (Predict/Optimize/Simulate) positioned at the bottom-right with project-specified colors. A simple "optimal zones" concept exists today (green hotspots and a derived optimal-zones list), and advisory panels include contextual text that references these green zones when Optimize is active.
 - Added a sticky, blurred page header that enlarges and brightens the gradient page title and icon on scroll for better contrast over a semi-transparent black background, plus a small semantic icon per page (home, growth, energy, traffic), and a compact Sign out button that remains visible on mobile.
-- Added a frosted-glass "Insights" container on each page (with a galaxy-style icon) and a persistent, slightly darker footer strip describing SUSPS and attribution (Developed by David Lameck).
+- Added a frosted-glass "Insights" container on each page (with a galaxy-style icon) that renders advisory text via a `FormattedInsights` component (markdown syntax stripped, only the main headings such as "Urban Analytics Insights for…", "Recommended Actions", and "Short-term/Medium-term/Long-term" are bolded) and a persistent, slightly darker footer strip describing SUSPS and attribution (Developed by David Lameck).
 
 - Environment parity
   - Confirmed the local vs Render story (local PostgreSQL + `data/<CITY>/{raw,processed}` vs Render PostgreSQL + S3 `susps-raw-data`) and S3 sync tooling as described below.

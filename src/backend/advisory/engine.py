@@ -59,10 +59,20 @@ def _summarize_timeseries(
 
 
 def _build_prompt(
-    scope: str, summaries: Dict[str, Any], zone_id: Optional[str] = None
+    scope: str,
+    summaries: Dict[str, Any],
+    zone_id: Optional[str] = None,
+    scenario: Optional[str] = None,
 ) -> str:
     # If a zone_id is provided, mention the selected area in the header
-    context_line = f" Focus specifically on area/zone: {zone_id}." if zone_id else ""
+    context_parts: list[str] = []
+    if zone_id:
+        context_parts.append(f"area/zone: {zone_id}")
+    if scenario:
+        context_parts.append(f"scenario: {scenario}")
+    context_line = ""
+    if context_parts:
+        context_line = " (" + ", ".join(context_parts) + ")"
     header = (
         "You are an urban analytics advisor embedded in the Smart Urban Simulation and Prediction System (SUSPS).\n"
         f"Given forecast outputs below{context_line}, analyze trends and provide realistic, actionable, and context-aware advice.\n"
@@ -139,7 +149,10 @@ def _prepare_scope_data(scope: str, bundles: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def generate_insights_from_scope(
-    scope: str, bundles: Dict[str, Any], zone_id: Optional[str] = None
+    scope: str,
+    bundles: Dict[str, Any],
+    zone_id: Optional[str] = None,
+    scenario: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     scope: one of 'dashboard', 'growth', 'energy', 'traffic'
@@ -152,9 +165,9 @@ def generate_insights_from_scope(
         scope if scope in {"dashboard", "growth", "energy", "traffic"} else "dashboard"
     )
     summary = _prepare_scope_data(scope, bundles)
-    prompt = _build_prompt(scope, summary, zone_id=zone_id)
-    # stable cache key (sha256 of sorted JSON, including zone for context)
-    summary_with_zone = {"zone_id": zone_id, "data": summary}
+    prompt = _build_prompt(scope, summary, zone_id=zone_id, scenario=scenario)
+    # stable cache key (sha256 of sorted JSON, including zone + scenario for context)
+    summary_with_zone = {"zone_id": zone_id, "scenario": scenario, "data": summary}
     summary_json = json.dumps(summary_with_zone, sort_keys=True, default=str)
     cache_key = (
         f"advisory:{scope}:{hashlib.sha256(summary_json.encode('utf-8')).hexdigest()}"

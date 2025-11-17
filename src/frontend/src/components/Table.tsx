@@ -1,6 +1,8 @@
+import type React from "react";
+
 interface TableProps {
   columns: string[];
-  rows: (string | number)[][];
+  rows: React.ReactNode[][];
 }
 
 export function Table({ columns, rows }: TableProps) {

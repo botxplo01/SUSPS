@@ -23,7 +23,7 @@ export function ModeToggle({ mode, onChange }: ModeToggleProps) {
         type="button"
         onClick={() => onChange?.("SIMULATE")}
         className={`rounded-full px-3 py-1 transition ${
-          !isReal ? "bg-black text-white" : "text-gray-700"
+          !isReal ? "bg-[#1d4ed8] text-white" : "text-gray-700"
         }`}
       >
         Simulate

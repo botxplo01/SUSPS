@@ -6,6 +6,7 @@ export type AdvisoryScope = "dashboard" | "growth" | "energy" | "traffic";
 interface AdvisoryResponse {
   scope: string;
   zone_id?: string | null;
+  scenario?: string | null;
   insights: string;
   model?: string | null;
   cached?: boolean;
@@ -23,6 +24,7 @@ interface UseAdvisoryResult {
 export function useAdvisory(
   scope: AdvisoryScope,
   zoneId: string | null,
+  scenario?: string | null,
 ): UseAdvisoryResult {
   const [insights, setInsights] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,6 +49,7 @@ export function useAdvisory(
 
     fetchJson<AdvisoryResponse>(`/advisory/${scope}`, {
       zone_id: zoneId,
+      scenario: scenario ?? undefined,
     })
       .then((data) => {
         if (cancelled) return;
@@ -67,7 +70,7 @@ export function useAdvisory(
     return () => {
       cancelled = true;
     };
-  }, [scope, zoneId]);
+  }, [scope, zoneId, scenario]);
 
   return { insights, loading, error, meta };
 }

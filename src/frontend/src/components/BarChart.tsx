@@ -1,8 +1,9 @@
-import type { ChartPoint } from "../types";
+import type { ChartPoint, ChartSeries } from "../types";
 
 interface BarChartProps {
   title?: string;
   data?: ChartPoint[];
+  series?: ChartSeries[];
   accentColor?: string;
   xLabel?: string;
   yLabel?: string;
@@ -12,13 +13,25 @@ interface BarChartProps {
 export function BarChart({
   title,
   data,
+  series,
   accentColor = "#62d9c5",
   xLabel,
   yLabel,
   showGrid = true,
 }: BarChartProps) {
-  const points = data ?? [];
-  const max = points.reduce((m, p) => (p.y > m ? p.y : m), 0);
+  const singlePoints = data ?? [];
+  const hasSeries = !!series && series.length > 0;
+  const primarySeries: ChartSeries | null = hasSeries
+    ? series![0]
+    : {
+        label: title ?? "Series",
+        color: accentColor,
+        points: singlePoints,
+      };
+  const seriesList: ChartSeries[] = hasSeries ? series! : [primarySeries];
+  const points = primarySeries.points ?? [];
+  const allPoints = seriesList.flatMap((s) => s.points ?? []);
+  const max = allPoints.reduce((m, p) => (p.y > m ? p.y : m), 0);
   const safeMax = max > 0 ? max : 1;
 
   const viewBoxWidth = 100;
@@ -27,8 +40,10 @@ export function BarChart({
   const innerWidth = viewBoxWidth - margin.left - margin.right;
   const innerHeight = viewBoxHeight - margin.top - margin.bottom;
 
-  const barWidth = points.length > 0 ? innerWidth / (points.length * 1.5) : 0;
+  const seriesCount = seriesList.length || 1;
   const spacing = points.length > 0 ? innerWidth / points.length : 0;
+  const groupWidth = spacing * 0.8;
+  const barWidth = seriesCount > 0 ? groupWidth / seriesCount : 0;
 
   const yTicks = 4;
   const yTickValues = Array.from({ length: yTicks }, (_, i) =>
@@ -60,31 +75,33 @@ export function BarChart({
   })();
 
   return (
-    <section className="rounded-xl bg-white p-4 shadow-sm">
+    <section className="flex flex-col rounded-xl bg-white p-4 shadow-sm">
       {title && (
-        <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-800">
-          <span
-            className="inline-flex h-5 w-5 items-center justify-center rounded border"
-            style={{ borderColor: accentColor }}
-          >
-            <span
-              className="h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: accentColor }}
-            />
-          </span>
+        <div className="mb-2 flex items-center justify-between gap-2 text-sm font-semibold text-gray-800">
           <span>{title}</span>
-        </h2>
+          <div className="flex flex-wrap gap-2 text-[11px] font-normal text-gray-700">
+            {seriesList.map((s) => (
+              <span key={s.label} className="inline-flex items-center gap-1">
+                <span
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={{ backgroundColor: s.color }}
+                />
+                <span>{s.label}</span>
+              </span>
+            ))}
+          </div>
+        </div>
       )}
       {points.length === 0 ? (
-        <div className="flex h-40 items-center justify-center text-xs text-gray-500">
+        <div className="flex min-h-[160px] flex-1 items-center justify-center text-xs text-gray-500">
           No data available.
         </div>
       ) : (
-        <div className="h-40 w-full">
+        <div className="flex min-h-[160px] flex-1 items-center justify-center">
           <svg
             viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
-            preserveAspectRatio="none"
-            className="h-full w-full"
+            preserveAspectRatio="xMidYMid meet"
+            className="w-full max-h-full"
           >
             {/* Y-axis gridlines and labels */}
             {showGrid &&
@@ -135,26 +152,27 @@ export function BarChart({
               strokeWidth={0.6}
             />
 
-            {/* Bars */}
+            {/* Bars for each series, grouped by x position */}
             {points.map((p, idx) => {
-              const x =
-                margin.left +
-                idx * spacing +
-                spacing / 2 -
-                barWidth / 2;
-              const height = (p.y / safeMax) * innerHeight;
-              const y = margin.top + innerHeight - height;
-              return (
-                <rect
-                  key={idx}
-                  x={x}
-                  y={y}
-                  width={barWidth}
-                  height={height}
-                  rx={1.5}
-                  fill={accentColor}
-                />
-              );
+              const groupStart =
+                margin.left + idx * spacing + spacing / 2 - groupWidth / 2;
+              return seriesList.map((s, sIdx) => {
+                const val = s.points[idx]?.y ?? 0;
+                const height = (val / safeMax) * innerHeight;
+                const y = margin.top + innerHeight - height;
+                const x = groupStart + sIdx * barWidth;
+                return (
+                  <rect
+                    key={`${s.label}-${idx}`}
+                    x={x}
+                    y={y}
+                    width={barWidth}
+                    height={height}
+                    rx={1.5}
+                    fill={s.color}
+                  />
+                );
+              });
             })}
 
             {/* X-axis tick labels */}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AreaBadge } from "../components/AreaBadge";
 import { ModeToggle } from "../components/ModeToggle";
 import { DescriptionSection } from "../components/DescriptionSection";
@@ -8,7 +8,7 @@ import { HotspotMap } from "../components/Map";
 import { InsightsSection } from "../components/InsightsSection";
 import { ActionToggle } from "../components/ActionToggle";
 import { FormattedInsights } from "../components/FormattedInsights";
-import type { Area, Mode } from "../types";
+import type { Area, Mode, ChartPoint, ChartSeries } from "../types";
 import { useAdvisory } from "../hooks/useAdvisory";
 import { useEnergySeries } from "../hooks/useSeries";
 import { useSimulationSeries } from "../hooks/useSimulation";
@@ -17,13 +17,84 @@ interface EnergyPageProps {
   selectedArea: Area | null;
 }
 
+function getEnergyScenarioLabel(id: string): string {
+  switch (id) {
+    case "energy_baseline":
+      return "Baseline";
+    case "energy_peak_spike":
+      return "Evening peak spike";
+    case "energy_demand_response":
+      return "Demand response pilot";
+    case "energy_simulate":
+      return "Custom simulate";
+    default:
+      return "Custom simulate";
+  }
+}
+
+function getEnergyScenarioClass(id: string): string {
+  switch (id) {
+    case "energy_baseline":
+      return "bg-slate-100 text-slate-700";
+    case "energy_peak_spike":
+      return "bg-amber-50 text-amber-700";
+    case "energy_demand_response":
+      return "bg-emerald-50 text-emerald-700";
+    case "energy_simulate":
+      return "bg-slate-100 text-slate-700";
+    default:
+      return "bg-slate-100 text-slate-700";
+  }
+}
+
+function computeEnergyTrend(points: ChartPoint[]): ChartPoint[] {
+  if (points.length < 2) return points.slice();
+  const n = points.length;
+  let sumX = 0;
+  let sumY = 0;
+  let sumXY = 0;
+  let sumX2 = 0;
+  for (const p of points) {
+    const x = p.x;
+    const y = p.y;
+    sumX += x;
+    sumY += y;
+    sumXY += x * y;
+    sumX2 += x * x;
+  }
+  const denom = n * sumX2 - sumX * sumX || 1;
+  const slope = (n * sumXY - sumX * sumY) / denom;
+  const intercept = sumY / n - (slope * sumX) / n;
+  return points.map((p) => ({ x: p.x, y: Math.max(intercept + slope * p.x, 0) }));
+}
+
+function computeEnergyOptimal(real: ChartPoint[], sim: ChartPoint[]): ChartPoint[] {
+  const len = Math.min(real.length, sim.length);
+  const out: ChartPoint[] = [];
+  for (let i = 0; i < len; i += 1) {
+    const r = real[i];
+    const s = sim[i];
+    out.push({ x: r.x, y: (r.y + s.y) / 2 });
+  }
+  return out;
+}
+
 export function EnergyPage({ selectedArea }: EnergyPageProps) {
   const [mode, setMode] = useState<Mode>("REAL");
   const [optimize, setOptimize] = useState(false);
+  const [simulateRun, setSimulateRun] = useState(0);
   const [demandScale, setDemandScale] = useState<number>(1.1);
   const [peakShift, setPeakShift] = useState<number>(0);
+  const [peakScale, setPeakScale] = useState<number>(1.2);
+  const [offpeakScale, setOffpeakScale] = useState<number>(1.0);
+  const [flattenRatio, setFlattenRatio] = useState<number>(0);
+  const [scenarioId, setScenarioId] = useState<string>("energy_baseline");
+  const [predictedEnergy, setPredictedEnergy] = useState<ChartPoint[]>([]);
+  const [optimalEnergy, setOptimalEnergy] = useState<ChartPoint[]>([]);
   const zoneId = selectedArea ? selectedArea.name : null;
-  const { insights, loading, error } = useAdvisory("energy", zoneId);
+  const scenarioLabel = getEnergyScenarioLabel(scenarioId);
+  const scenarioClass = getEnergyScenarioClass(scenarioId);
+  const { insights, loading, error } = useAdvisory("energy", zoneId, scenarioId);
   const { points: energyPoints, loading: energyLoading } = useEnergySeries(
     selectedArea ? selectedArea.id : null,
   );
@@ -39,47 +110,150 @@ export function EnergyPage({ selectedArea }: EnergyPageProps) {
       parameters: {
         demand_scale: demandScale,
         peak_hour_shift: peakShift,
+        peak_scale: peakScale,
+        offpeak_scale: offpeakScale,
+        flatten_ratio: flattenRatio,
       },
+      runKey: simulateRun,
     },
   );
-  const chartPoints = mode === "SIMULATE" ? simulateEnergyPoints : energyPoints;
+  const basePoints = energyPoints;
+
+  useEffect(() => {
+    if (mode === "SIMULATE" && optimize && basePoints.length && simulateEnergyPoints.length) {
+      setOptimalEnergy(computeEnergyOptimal(basePoints, simulateEnergyPoints));
+    }
+    if (!optimize) {
+      setOptimalEnergy([]);
+    }
+  }, [mode, optimize, basePoints, simulateEnergyPoints]);
+
+  const energySeries: ChartSeries[] = [];
+  if (basePoints.length) {
+    energySeries.push({ label: "Real", color: "#f87b14", points: basePoints });
+  }
+  if (mode === "REAL" && predictedEnergy.length === basePoints.length && predictedEnergy.length) {
+    energySeries.push({ label: "Predicted", color: "#de3388", points: predictedEnergy });
+  }
+  if (mode === "SIMULATE" && simulateRun > 0 && simulateEnergyPoints.length === basePoints.length) {
+    energySeries.push({ label: "Simulated", color: "#1b55ce", points: simulateEnergyPoints });
+  }
+  if (optimize && optimalEnergy.length === basePoints.length && optimalEnergy.length) {
+    energySeries.push({ label: "Optimal", color: "#08c44d", points: optimalEnergy });
+  }
 
   return (
     <div className="space-y-4 pb-16">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
         <AreaBadge name={selectedArea?.name ?? "No area selected"} />
-        <ModeToggle
-          mode={mode}
-          onChange={(next) => {
-            setMode(next);
-            setOptimize(false);
-          }}
-        />
+        <div className="flex items-center gap-3">
+          {selectedArea && (
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-medium ${scenarioClass}`}
+            >
+              Scenario: {scenarioLabel}
+            </span>
+          )}
+          <ModeToggle
+            mode={mode}
+            onChange={(next) => {
+              setMode(next);
+              setOptimize(false);
+              if (next === "REAL") {
+                setSimulateRun(0);
+                setScenarioId("energy_baseline");
+              } else {
+                setScenarioId((prev) =>
+                  prev === "energy_baseline" ? "energy_simulate" : prev,
+                );
+              }
+            }}
+          />
+        </div>
       </div>
 
-      <DescriptionSection title="Energy Description">
+      <DescriptionSection title="Energy Demand Overview">
         {selectedArea ? (
           <>
-            Inspect current and forecasted energy demand for {selectedArea.name}.
-            Use Real mode to view baseline demand and Simulate mode to explore
-            hypothetical demand spikes and mitigation strategies.
+            In REAL mode, the table and line chart show the baseline hourly
+            electricity demand profile for {selectedArea.name}: each row and point
+            is one hour of a representative day, with demand expressed in MWh.
+            This profile comes directly from the SUSPS pipeline for the selected
+            area.
+            <br />
+            In SIMULATE mode, the same hourly structure is preserved but the values
+            are adjusted using your scenario settings: demand scaling, peak-hour
+            shifting, different multipliers for peak vs off-peak hours, and an
+            optional flattening toward the daily average. This lets you explore how
+            interventions like demand response or tariff changes could reshape the
+            load curve relative to the baseline.
           </>
         ) : (
           <>
-            Select an area from the sidebar to load energy usage and forecast
-            summaries.
+            Select an area from the sidebar to view its baseline hourly energy
+            demand profile in REAL mode. After selecting an area, switch to
+            SIMULATE to apply scaling, peak shifting, and flattening parameters and
+            see how the demand curve could change under different scenarios.
           </>
         )}
       </DescriptionSection>
 
-      {selectedArea && (
-        <section className="rounded-xl bg-white p-4 shadow-sm">
+      {selectedArea && mode === "SIMULATE" && (
+        <section className="rounded-xl bg-[#fffcf3] p-4 shadow-sm">
           <h2 className="mb-2 text-sm font-semibold text-gray-800">
             Simulation parameters
           </h2>
+          <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
+            <span className="mr-1 font-semibold text-gray-600">Presets:</span>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("REAL");
+                setScenarioId("energy_baseline");
+                setDemandScale(1.0);
+                setPeakShift(0);
+                setPeakScale(1.0);
+                setOffpeakScale(1.0);
+                setFlattenRatio(0);
+              }}
+              className="rounded-full bg-neutral-200 px-3 py-1 text-gray-800 hover:bg-neutral-300"
+            >
+              Baseline
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("SIMULATE");
+                setScenarioId("energy_peak_spike");
+                setDemandScale(1.2);
+                setPeakShift(0);
+                setPeakScale(1.3);
+                setOffpeakScale(1.0);
+                setFlattenRatio(0);
+              }}
+              className="rounded-full bg-amber-50 px-3 py-1 text-amber-700 hover:bg-amber-100"
+            >
+              Evening peak spike
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("SIMULATE");
+                setScenarioId("energy_demand_response");
+                setDemandScale(1.0);
+                setPeakShift(0);
+                setPeakScale(0.75);
+                setOffpeakScale(1.1);
+                setFlattenRatio(0.4);
+              }}
+              className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700 hover:bg-emerald-100"
+            >
+              Demand response pilot
+            </button>
+          </div>
           <p className="mb-3 text-xs text-gray-600">
-            Adjust the demand scale and peak-hour shift, then switch to Simulate
-            mode to see how the daily profile changes.
+            Adjust the demand scale, peak-hour timing, and flattening, then
+            switch to Simulate mode to see how the daily profile changes.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
@@ -116,7 +290,64 @@ export function EnergyPage({ selectedArea }: EnergyPageProps) {
               />
               <p className="mt-1 text-[11px] text-gray-500">
                 Positive values shift peaks later in the day; negative values
-                earlier.
+                earlier (e.g. demand response or staggered working hours).
+              </p>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700">
+                Peak vs off-peak scaling
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <input
+                    type="number"
+                    min={0.5}
+                    max={2}
+                    step={0.1}
+                    value={peakScale}
+                    onChange={(e) =>
+                      setPeakScale(Number(e.target.value) || 0)
+                    }
+                    className="w-full rounded-md border border-neutral-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-neutral-400"
+                  />
+                  <p className="mt-1 text-[11px] text-gray-500">Peak hours</p>
+                </div>
+                <div>
+                  <input
+                    type="number"
+                    min={0.5}
+                    max={2}
+                    step={0.1}
+                    value={offpeakScale}
+                    onChange={(e) =>
+                      setOffpeakScale(Number(e.target.value) || 0)
+                    }
+                    className="w-full rounded-md border border-neutral-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-neutral-400"
+                  />
+                  <p className="mt-1 text-[11px] text-gray-500">Off-peak hours</p>
+                </div>
+              </div>
+              <p className="mt-1 text-[11px] text-gray-500">
+                Use to model measures like time-of-use tariffs or targeted load
+                shifting.
+              </p>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700">
+                Flattening toward average (0–1)
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.1}
+                value={flattenRatio}
+                onChange={(e) => setFlattenRatio(Number(e.target.value) || 0)}
+                className="w-full rounded-md border border-neutral-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-neutral-400"
+              />
+              <p className="mt-1 text-[11px] text-gray-500">
+                0 = keep current shape; values closer to 1 flatten peaks and fill
+                valleys (e.g. strong demand response programs).
               </p>
             </div>
           </div>
@@ -126,8 +357,45 @@ export function EnergyPage({ selectedArea }: EnergyPageProps) {
       <Table
         columns={["Hour", "Demand (MWh)"]}
         rows={
-          selectedArea && chartPoints.length > 0
-            ? chartPoints.map((p) => [p.x, Number(p.y.toFixed(2))])
+          selectedArea && basePoints.length > 0
+            ? basePoints.map((p, idx) => {
+                const real = Number(p.y.toFixed(2));
+                const pred =
+                  mode === "REAL" && predictedEnergy[idx]
+                    ? Number(predictedEnergy[idx].y.toFixed(2))
+                    : null;
+                const sim =
+                  mode === "SIMULATE" && simulateRun > 0 && simulateEnergyPoints[idx]
+                    ? Number(simulateEnergyPoints[idx].y.toFixed(2))
+                    : null;
+                const opt =
+                  optimize && optimalEnergy[idx]
+                    ? Number(optimalEnergy[idx].y.toFixed(2))
+                    : null;
+                return [
+                  p.x,
+                  (
+                    <>
+                      {real.toFixed(2)}
+                      {pred !== null && (
+                        <span className="ml-1 text-[11px] text-[#de3388]">
+                          ({pred.toFixed(2)})
+                        </span>
+                      )}
+                      {sim !== null && (
+                        <span className="ml-1 text-[11px] text-[#1b55ce]">
+                          ({sim.toFixed(2)})
+                        </span>
+                      )}
+                      {opt !== null && (
+                        <span className="ml-1 text-[11px] text-[#08c44d]">
+                          ({opt.toFixed(2)})
+                        </span>
+                      )}
+                    </>
+                  ),
+                ];
+              })
             : [["—", "—"]]
         }
       />
@@ -135,8 +403,7 @@ export function EnergyPage({ selectedArea }: EnergyPageProps) {
       <div className="grid gap-4 md:grid-cols-2">
         <LineChart
           title="Energy Consumption"
-          data={chartPoints}
-          accentColor="#f87b14"
+          series={energySeries}
           xLabel="Hour of day"
           yLabel="Demand (MWh)"
         />
@@ -162,7 +429,14 @@ export function EnergyPage({ selectedArea }: EnergyPageProps) {
           <p className="text-red-600 text-sm">{error}</p>
         )}
         {selectedArea && !loading && !error && insights && (
-          <FormattedInsights text={insights} />
+          <>
+            <FormattedInsights text={insights} />
+            {scenarioId !== "energy_baseline" && (
+              <p className="mt-2 text-[11px] text-gray-500">
+                Scenario: {scenarioLabel}
+              </p>
+            )}
+          </>
         )}
         {selectedArea && optimize && (
           <p className="mt-2 text-xs text-emerald-700">
@@ -178,13 +452,24 @@ export function EnergyPage({ selectedArea }: EnergyPageProps) {
         onPredict={() => {
           setMode("REAL");
           setOptimize(false);
+          setSimulateRun(0);
+          if (energyPoints.length) {
+            setPredictedEnergy(computeEnergyTrend(energyPoints));
+          } else {
+            setPredictedEnergy([]);
+          }
         }}
         onOptimize={() => {
           setOptimize(true);
+          if (mode === "SIMULATE") {
+            setSimulateRun((prev) => prev + 1);
+          }
         }}
         onSimulate={() => {
-          setMode("SIMULATE");
-          setOptimize(false);
+          if (mode === "SIMULATE") {
+            setSimulateRun((prev) => prev + 1);
+            setOptimize(false);
+          }
         }}
       />
     </div>

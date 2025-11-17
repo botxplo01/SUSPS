@@ -941,7 +941,17 @@ def advisory_status(probe: bool = Query(False)):
 
 
 @app.get("/advisory/{scope}")
-def advisory(scope: str, zone_id: Optional[str] = Query(None)):
+def advisory(
+    scope: str,
+    zone_id: Optional[str] = Query(None),
+    scenario: Optional[str] = Query(
+        None,
+        description=(
+            "Optional scenario label (e.g. 'baseline', 'remote_work', 'demand_response') "
+            "used to tailor advisory text to the current SIMULATE configuration."
+        ),
+    ),
+):
     """
     Return markdown insights for a given scope: dashboard|growth|energy|traffic.
     Uses recent data from existing endpoints (DB → processed → synthetic).
@@ -964,10 +974,11 @@ def advisory(scope: str, zone_id: Optional[str] = Query(None)):
         bundles.setdefault("energy", [])
         bundles.setdefault("traffic", [])
 
-    res = generate_insights_from_scope(scope_l, bundles, zone_id=zone_id)
+    res = generate_insights_from_scope(scope_l, bundles, zone_id=zone_id, scenario=scenario)
     return {
         "scope": scope_l,
         "zone_id": zone_id,
+        "scenario": scenario,
         "insights": res.get("text", ""),
         "model": res.get("model"),
         "cached": res.get("cached", False),
