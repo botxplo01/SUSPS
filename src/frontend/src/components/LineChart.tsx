@@ -1,4 +1,5 @@
-import type { ChartPoint, ChartSeries } from "../types";
+import { forwardRef, useImperativeHandle, useRef } from "react";
+import type { ChartPoint, ChartSeries, ChartExportHandle } from "../types";
 
 interface LineChartProps {
   title?: string;
@@ -11,84 +12,148 @@ interface LineChartProps {
   onExport?: () => void;
 }
 
-export function LineChart({
-  title,
-  data,
-  series,
-  accentColor = "#62d9c5",
-  xLabel,
-  yLabel,
-  showGrid = true,
-  onExport,
-}: LineChartProps) {
-  const singlePoints = data ?? [];
-  const hasSeries = !!series && series.length > 0;
-  const primarySeries: ChartSeries | null = hasSeries
-    ? series![0]
-    : {
-        label: title ?? "Series",
-        color: accentColor,
-        points: singlePoints,
-      };
-  const seriesList: ChartSeries[] = hasSeries ? series! : [primarySeries];
-  const points = primarySeries.points ?? [];
-  const allPoints = seriesList.flatMap((s) => s.points ?? []);
-  const max = allPoints.reduce((m, p) => (p.y > m ? p.y : m), 0);
-  const safeMax = max > 0 ? max : 1;
+export const LineChart = forwardRef<ChartExportHandle, LineChartProps>(
+  function LineChart(
+    {
+      title,
+      data,
+      series,
+      accentColor = "#62d9c5",
+      xLabel,
+      yLabel,
+      showGrid = true,
+      onExport,
+    }: LineChartProps,
+    ref,
+  ) {
+    const svgRef = useRef<SVGSVGElement | null>(null);
 
-  const viewBoxWidth = 100;
-  const viewBoxHeight = 40;
-  const margin = { top: 4, right: 4, bottom: 10, left: 16 };
-  const innerWidth = viewBoxWidth - margin.left - margin.right;
-  const innerHeight = viewBoxHeight - margin.top - margin.bottom;
+    const captureSvgAsPng = async (): Promise<string | null> => {
+      if (typeof document === "undefined") return null;
+      const svg = svgRef.current;
+      if (!svg) return null;
 
-  const buildPathD = (pts: ChartPoint[]): string => {
-    if (!pts.length) return "";
-    return pts
-      .map((p, idx) => {
-        const x =
-          margin.left +
-          (idx / Math.max(points.length - 1, 1)) * innerWidth;
-        const y =
-          margin.top +
-          innerHeight -
-          (p.y / safeMax) * innerHeight;
-        return `${idx === 0 ? "M" : "L"}${x},${y}`;
-      })
-      .join(" ");
-  };
+      try {
+        const xml = new XMLSerializer().serializeToString(svg);
+        const blob = new Blob([xml], {
+          type: "image/svg+xml;charset=utf-8",
+        });
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        const width = svg.clientWidth || 800;
+        const height = svg.clientHeight || 400;
+        const dpr = window.devicePixelRatio || 1;
+        const canvas = document.createElement("canvas");
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          URL.revokeObjectURL(url);
+          return null;
+        }
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        img.crossOrigin = "anonymous";
 
-  const yTicks = 4;
-  const yTickValues = Array.from({ length: yTicks }, (_, i) =>
-    (safeMax * i) / (yTicks - 1),
-  );
+        const dataUrl: string | null = await new Promise((resolve) => {
+          img.onload = () => {
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+            URL.revokeObjectURL(url);
+            try {
+              resolve(canvas.toDataURL("image/png"));
+            } catch {
+              resolve(null);
+            }
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve(null);
+          };
+          img.src = url;
+        });
 
-  const formatTick = (value: number) => {
-    if (value === 0) return "0";
-    if (safeMax >= 10) return value.toFixed(0);
-    return value.toFixed(1);
-  };
-
-  const xTickIndices = (() => {
-    if (points.length === 0) return [] as number[];
-    const maxXTicks = Math.min(points.length, 6);
-    if (points.length <= maxXTicks) {
-      return points.map((_, idx) => idx);
-    }
-    const indices: number[] = [];
-    for (let i = 0; i < maxXTicks; i += 1) {
-      const rawIndex = Math.round(
-        (i / (maxXTicks - 1)) * (points.length - 1),
-      );
-      if (!indices.includes(rawIndex)) {
-        indices.push(rawIndex);
+        return dataUrl;
+      } catch {
+        return null;
       }
-    }
-    return indices;
-  })();
+    };
 
-  return (
-    <section className="relative flex flex-col rounded-xl bg-white p-4 shadow-sm">
+    useImperativeHandle(
+      ref,
+      () => ({
+        capturePng: captureSvgAsPng,
+      }),
+      [],
+    );
+
+    const singlePoints = data ?? [];
+    const hasSeries = !!series && series.length > 0;
+    const primarySeries: ChartSeries | null = hasSeries
+      ? series![0]
+      : {
+          label: title ?? "Series",
+          color: accentColor,
+          points: singlePoints,
+        };
+    const seriesList: ChartSeries[] = hasSeries ? series! : [primarySeries];
+    const points = primarySeries.points ?? [];
+    const allPoints = seriesList.flatMap((s) => s.points ?? []);
+    const max = allPoints.reduce((m, p) => (p.y > m ? p.y : m), 0);
+    const safeMax = max > 0 ? max : 1;
+
+    const viewBoxWidth = 100;
+    const viewBoxHeight = 40;
+    const margin = { top: 4, right: 4, bottom: 10, left: 16 };
+    const innerWidth = viewBoxWidth - margin.left - margin.right;
+    const innerHeight = viewBoxHeight - margin.top - margin.bottom;
+
+    const buildPathD = (pts: ChartPoint[]): string => {
+      if (!pts.length) return "";
+      return pts
+        .map((p, idx) => {
+          const x =
+            margin.left +
+            (idx / Math.max(points.length - 1, 1)) * innerWidth;
+          const y =
+            margin.top +
+            innerHeight -
+            (p.y / safeMax) * innerHeight;
+          return `${idx === 0 ? "M" : "L"}${x},${y}`;
+        })
+        .join(" ");
+    };
+
+    const yTicks = 4;
+    const yTickValues = Array.from({ length: yTicks }, (_, i) =>
+      (safeMax * i) / (yTicks - 1),
+    );
+
+    const formatTick = (value: number) => {
+      if (value === 0) return "0";
+      if (safeMax >= 10) return value.toFixed(0);
+      return value.toFixed(1);
+    };
+
+    const xTickIndices = (() => {
+      if (points.length === 0) return [] as number[];
+      const maxXTicks = Math.min(points.length, 6);
+      if (points.length <= maxXTicks) {
+        return points.map((_, idx) => idx);
+      }
+      const indices: number[] = [];
+      for (let i = 0; i < maxXTicks; i += 1) {
+        const rawIndex = Math.round(
+          (i / (maxXTicks - 1)) * (points.length - 1),
+        );
+        if (!indices.includes(rawIndex)) {
+          indices.push(rawIndex);
+        }
+      }
+      return indices;
+    })();
+
+    return (
+      <section className="relative flex flex-col rounded-xl bg-white p-4 shadow-sm">
       {title && (
         <div className="mb-2 flex items-center justify-between gap-2 text-sm font-semibold text-gray-800">
           <span>{title}</span>
@@ -112,6 +177,7 @@ export function LineChart({
       ) : (
         <div className="flex min-h-[160px] flex-1 items-center justify-center">
           <svg
+            ref={svgRef}
             viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
             preserveAspectRatio="xMidYMid meet"
             className="w-full max-h-full"
@@ -251,4 +317,4 @@ export function LineChart({
       )}
     </section>
   );
-}
+});

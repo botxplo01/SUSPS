@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { AreaBadge } from "../components/AreaBadge";
 import { ModeToggle } from "../components/ModeToggle";
 import { DescriptionSection } from "../components/DescriptionSection";
@@ -18,6 +18,7 @@ import type {
   ExportPayload,
   ExportPage,
   ExportFormat,
+  ChartExportHandle,
 } from "../types";
 import { useAdvisory } from "../hooks/useAdvisory";
 import { useEnergySeries } from "../hooks/useSeries";
@@ -116,6 +117,7 @@ export function EnergyPage({
   const [predictError, setPredictError] = useState<string | null>(null);
   const [optimalEnergy, setOptimalEnergy] = useState<ChartPoint[]>([]);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const chartRef = useRef<ChartExportHandle | null>(null);
   const [exportTarget, setExportTarget] = useState<EnergyExportTarget | null>(
     null,
   );
@@ -243,7 +245,10 @@ export function EnergyPage({
     setIsExportDialogOpen(true);
   };
 
-  const buildExportPage = (target: EnergyExportTarget): ExportPage => {
+  const buildExportPage = (
+    target: EnergyExportTarget,
+    chartImage?: string | null,
+  ): ExportPage => {
     const areaName = selectedArea?.name ?? "No area selected";
     const description = selectedArea
       ? `Energy module for ${selectedArea.name} in ${mode} mode.`
@@ -280,6 +285,7 @@ export function EnergyPage({
                 label: s.label,
                 points: s.points,
               })),
+              image_data: chartImage ?? undefined,
             },
           ];
 
@@ -297,7 +303,8 @@ export function EnergyPage({
 
   const handleConfirmExport = async (format: ExportFormat) => {
     if (!exportTarget) return;
-    const page = buildExportPage(exportTarget);
+    const chartImage = chartRef.current ? await chartRef.current.capturePng() : null;
+    const page = buildExportPage(exportTarget, chartImage);
     const payload: ExportPayload = {
       export_format: format,
       pages: [page],
@@ -585,6 +592,7 @@ export function EnergyPage({
 
       <div className="grid gap-4 md:grid-cols-2">
         <LineChart
+          ref={chartRef}
           title="Energy Consumption"
           series={energySeries}
           xLabel="Hour of day"

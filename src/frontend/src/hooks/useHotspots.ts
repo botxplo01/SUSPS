@@ -55,7 +55,7 @@ export function useHotspotAreas(
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [zoneId]);
 
   return { items, loading, error };
 }
@@ -112,7 +112,7 @@ export function useHotspotForecast(
     return () => {
       cancelled = true;
     };
-  }, [year]);
+  }, [year, zoneId]);
 
   return { items, loading, error };
 }

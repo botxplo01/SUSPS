@@ -73,14 +73,118 @@ class TimeSeriesForecaster:
         compact = [
             {"t": s.get("t"), "value": float(s.get("value", 0.0))} for s in series[-64:]
         ]
+
+        # Deterministic baseline forecast used as an anchor for the HF model.
+        baseline = self._forecast_deterministic(series, horizon)
+
+        # Optional domain-specific context from processed CSVs (e.g. energy features).
+        context: Dict[str, Any] = {}
+        if self.target == "energy":
+            try:
+                import pandas as pd  # type: ignore
+                from src.pipeline import config as _cfg  # type: ignore
+
+                f = _cfg.PROCESSED_DIR / "energy_features.csv"
+                if f.exists():
+                    df = pd.read_csv(f)
+                    cols = [
+                        c for c in df.columns if c in {"sector", "demand_mwh", "pct"}
+                    ]
+                    if cols:
+                        context["energy_features"] = df[cols].to_dict(orient="records")
+            except Exception:
+                # Best-effort only; context is optional.
+                pass
+        elif self.target == "traffic":
+            try:
+                import pandas as pd  # type: ignore
+                from src.pipeline import config as _cfg  # type: ignore
+
+                base_dir = _cfg.PROCESSED_DIR
+
+                # Prefer enriched traffic features (TomTom + MATATUS/OSM context),
+                # with a fallback to the simpler traffic_features.csv.
+                t_path = base_dir / "traffic_enriched_features.csv"
+                if not t_path.exists():
+                    t_path = base_dir / "traffic_features.csv"
+                if t_path.exists():
+                    t_df = pd.read_csv(t_path)
+                    keep_cols = [
+                        c
+                        for c in t_df.columns
+                        if c
+                        in {
+                            "corridor",
+                            "hour",
+                            "veh_per_hour",
+                            "is_peak",
+                            "bus_pax_per_hour",
+                            "matatu_route_count",
+                            "osm_feature_count",
+                            "osm_total_km",
+                        }
+                    ]
+                    if keep_cols:
+                        small = t_df[keep_cols].copy()
+                        # Downsample to keep prompt size under control.
+                        if len(small) > 64:
+                            sort_cols = [
+                                c for c in ["hour", "corridor"] if c in small.columns
+                            ]
+                            if sort_cols:
+                                small = small.sort_values(sort_cols)
+                            small = small.head(64)
+                        context["traffic_features"] = small.to_dict(orient="records")
+
+                # Summarise GIS layers from Mobility_and_Transport/GIS_DATA_2019.zip
+                # (written by preprocess_mobility_gis) so the model sees which
+                # layers exist and their relative sizes.
+                gis_path = base_dir / "mobility_gis_layers.csv"
+                if gis_path.exists():
+                    gis_df = pd.read_csv(gis_path)
+                    layer_cols = [
+                        c
+                        for c in gis_df.columns
+                        if c in {"layer", "records", "geometry_type"}
+                    ]
+                    summary: Dict[str, Any] = {}
+                    if "records" in gis_df.columns:
+                        try:
+                            summary["total_layers"] = int(len(gis_df))
+                            summary["total_records"] = int(gis_df["records"].sum())
+                        except Exception:
+                            pass
+                    if summary:
+                        context["mobility_gis_layers_summary"] = summary
+                    if layer_cols:
+                        top = gis_df[layer_cols].copy()
+                        if "records" in layer_cols:
+                            top = top.sort_values("records", ascending=False)
+                        context["mobility_gis_layers"] = top.head(10).to_dict(
+                            orient="records"
+                        )
+            except Exception:
+                # Best-effort only; traffic context is optional.
+                pass
+
+        payload: Dict[str, Any] = {
+            "target": self.target,
+            "historical": compact,
+            "baseline": baseline,
+        }
+        if context:
+            payload["context"] = context
+
         prompt = (
             "You are a time-series forecasting model for urban analytics. "
             f"Target: {self.target}. "
-            "Given the historical series below as JSON, forecast the next "
-            f"{horizon} future steps. Use a reasonable continuation of the "
-            "trend (no wild jumps). Return ONLY a JSON array with objects of "
-            'the form {"step": int, "t": number, "value": float}.\n\n'
-            "Historical series (most recent last):\n" + json.dumps(compact)
+            "Given the JSON payload below, which contains the historical "
+            "series, a simple deterministic baseline forecast, and any relevant "
+            "context, forecast the next "
+            f"{horizon} steps. Use a reasonable continuation of the trend (no "
+            "wild jumps). Return ONLY a JSON array with objects of the form "
+            '{"step": int, "t": number, "value": float}.\n\n'
+            "Payload:\n" + json.dumps(payload)
         )
 
         text = self._gen.generate(prompt, max_new_tokens=256, temperature=0.1)
@@ -110,30 +214,46 @@ class TimeSeriesForecaster:
     def _forecast_deterministic(
         self, series: List[Dict[str, Any]], horizon: int
     ) -> List[Dict[str, Any]]:
-        # Simple linear extrapolation based on the last two points.
+        """Deterministic forecast when no HF model is used or available.
+
+        For the typical SUSPS use-case where `horizon` matches the length of the
+        input series (e.g. 24 hourly points), this computes a simple linear
+        regression over the entire series and returns an in-sample trend
+        forecast aligned with the original t-values. This avoids degenerate
+        behaviour (such as a flat forecast when the last two points are
+        identical).
+
+        When `horizon` exceeds the series length, the function first produces
+        in-sample trend values for the existing points and then extends beyond
+        the last t using the same slope.
+        """
+
+        if not series or horizon <= 0:
+            return []
+
         try:
-            if len(series) < 2:
-                last = series[-1]
-                last_t = float(last.get("t", len(series)))
-                last_v = float(last.get("value", 0.0))
+            # Extract numeric t and value arrays
+            xs = [float(s.get("t", i)) for i, s in enumerate(series)]
+            ys = [float(s.get("value", 0.0)) for s in series]
+            n = len(xs)
+            if n == 1:
+                last_t = xs[0]
+                last_v = ys[0]
                 return [
                     {
                         "step": i + 1,
-                        "t": last_t + (i + 1),
+                        "t": last_t,
                         "value": last_v,
                         "source": "deterministic",
                     }
                     for i in range(horizon)
                 ]
 
-            s0 = series[-2]
-            s1 = series[-1]
-            t0 = float(s0.get("t", len(series) - 1))
-            t1 = float(s1.get("t", len(series)))
-            v0 = float(s0.get("value", 0.0))
-            v1 = float(s1.get("value", 0.0))
-            dt = max(t1 - t0, 1.0)
-            slope = (v1 - v0) / dt
+            mean_x = sum(xs) / n
+            mean_y = sum(ys) / n
+            denom = sum((x - mean_x) ** 2 for x in xs) or 1.0
+            slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / denom
+            intercept = mean_y - slope * mean_x
         except Exception:
             # Fallback: constant extension of last value
             last = series[-1]
@@ -150,17 +270,36 @@ class TimeSeriesForecaster:
             ]
 
         out: List[Dict[str, Any]] = []
-        current_t = t1
-        current_v = v1
-        for i in range(horizon):
-            current_t = current_t + dt
-            current_v = current_v + slope * dt
+
+        # In-sample trend for existing points
+        base_horizon = min(horizon, len(xs))
+        for i in range(base_horizon):
+            t_val = xs[i]
+            v_val = intercept + slope * t_val
             out.append(
                 {
                     "step": i + 1,
-                    "t": current_t,
-                    "value": current_v,
+                    "t": t_val,
+                    "value": v_val,
                     "source": "deterministic",
                 }
             )
+
+        # If additional horizon is requested, extend beyond the last point
+        if horizon > base_horizon:
+            last_t = xs[-1]
+            last_v = intercept + slope * last_t
+            dt = (xs[-1] - xs[0]) / max(len(xs) - 1, 1)
+            for i in range(base_horizon, horizon):
+                last_t = last_t + dt
+                last_v = last_v + slope * dt
+                out.append(
+                    {
+                        "step": i + 1,
+                        "t": last_t,
+                        "value": last_v,
+                        "source": "deterministic",
+                    }
+                )
+
         return out

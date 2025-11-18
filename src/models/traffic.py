@@ -26,13 +26,21 @@ def daily_profile() -> List[Dict[str, int]]:
 def daily_profile_from_processed(
     processed_dir: Path | None = None,
 ) -> List[Dict[str, int]]:
-    """Average veh/hour per clock hour from processed traffic_features.csv if present."""
+    """Average veh/hour per clock hour from processed traffic artifacts if present.
+
+    Prefers traffic_enriched_features.csv (TomTom + MATATUS/OSM context) with a
+    fallback to traffic_features.csv.
+    """
     try:
         pdir = processed_dir or _cfg.PROCESSED_DIR
-        f = pdir / "traffic_features.csv"
+        f = pdir / "traffic_enriched_features.csv"
+        if not f.exists():
+            f = pdir / "traffic_features.csv"
         if not f.exists():
             return []
         df = pd.read_csv(f)
+        if "hour" not in df.columns or "veh_per_hour" not in df.columns:
+            return []
         g = df.groupby("hour")["veh_per_hour"].mean().reset_index()
         return [
             {"hour": int(r["hour"]), "volume": int(r["veh_per_hour"])}

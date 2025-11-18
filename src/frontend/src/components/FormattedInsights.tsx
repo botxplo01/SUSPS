@@ -5,8 +5,51 @@ interface FormattedInsightsProps {
 // Render advisory/insights text in a normal, non-markdown style while
 // preserving key headings as bold.
 export function FormattedInsights({ text }: FormattedInsightsProps) {
-  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  // Normalise newlines and gently split markdown-style headings and numbered
+  // items so that the layout is closer to the PDF/export formatting.
+  let normalised = text.replace(/\r\n/g, "\n");
+  // Ensure markdown headings like "### Energy Profile" start on their own line.
+  normalised = normalised.replace(/\s*###\s+/g, "\n### ");
+  // Ensure a leading "**Insights**" marker is on its own line so we can drop it.
+  normalised = normalised.replace(/\s*\*\*\s*Insights\s*\*\*/gi, "\nInsights\n");
+  // Insert line breaks before simple numbered items like "1. text" when they
+  // appear inline with other content.
+  normalised = normalised.replace(/(\S)\s+(\d+\.\s)/g, "$1\n$2");
+
+  const lines = normalised.split("\n");
   const elements: JSX.Element[] = [];
+  let pendingOrdered: string[] = [];
+  let pendingBullets: string[] = [];
+
+  const flushOrdered = () => {
+    if (!pendingOrdered.length) return;
+    elements.push(
+      <ol
+        key={`olist-${elements.length}`}
+        className="ml-4 list-decimal space-y-1 text-[13px] text-gray-800"
+      >
+        {pendingOrdered.map((item, idx) => (
+          <li key={idx}>{item}</li>
+        ))}
+      </ol>,
+    );
+    pendingOrdered = [];
+  };
+
+  const flushBullets = () => {
+    if (!pendingBullets.length) return;
+    elements.push(
+      <ul
+        key={`ulist-${elements.length}`}
+        className="ml-4 list-disc space-y-1 text-[13px] text-gray-800"
+      >
+        {pendingBullets.map((item, idx) => (
+          <li key={idx}>{item}</li>
+        ))}
+      </ul>,
+    );
+    pendingBullets = [];
+  };
 
   for (const raw of lines) {
     let line = raw.trim();
@@ -35,10 +78,36 @@ export function FormattedInsights({ text }: FormattedInsightsProps) {
       continue;
     }
 
-    // Strip common markdown markers.
+    // Detect simple numbered list items like "1. text", "2. text" and collect
+    // them into an ordered list that will be flushed when the sequence ends.
+    const orderedMatch = line.match(/^(\d+)\.\s+(.*)$/);
+    if (orderedMatch) {
+      const itemRaw = orderedMatch[2].trim();
+      const item = itemRaw.replace(/\*\*/g, "").replace(/\(bold\)/gi, "").trim();
+      if (item) {
+        pendingOrdered.push(item);
+      }
+      continue;
+    }
+
+    // Detect simple unordered bullet items like "- text" or "* text".
+    const bulletMatch = line.match(/^[-*]\s+(.*)$/);
+    if (bulletMatch) {
+      const itemRaw = bulletMatch[1].trim();
+      const item = itemRaw.replace(/\*\*/g, "").replace(/\(bold\)/gi, "").trim();
+      if (item) {
+        pendingBullets.push(item);
+      }
+      continue;
+    }
+
+    // Non-list content: flush any pending lists before rendering headings or
+    // paragraphs.
+    flushOrdered();
+    flushBullets();
+
+    // Strip common markdown markers (except list markers, handled above).
     line = line.replace(/^#{1,6}\s*/, ""); // leading #
-    line = line.replace(/^\*\s+/, ""); // leading bullet *
-    line = line.replace(/^\d+\.\s+/, ""); // numbered list
     line = line.replace(/\*\*/g, ""); // bold markers
 
     if (!line) continue;
@@ -68,11 +137,19 @@ export function FormattedInsights({ text }: FormattedInsightsProps) {
 
     // Profile-style headings like "Energy Profile", "Traffic Profile",
     // or "Growth in Population" should render as bold section titles.
-    if (
+    const isProfileHeading =
       ((/profile\b/i.test(line) && !/[.!?]/.test(line)) ||
         /growth in population/i.test(line)) &&
-      line.length <= 60
-    ) {
+      line.length <= 60;
+
+    // Named headings that appear in advisory output and should be emphasized,
+    // even when they do not contain the word "profile".
+    const isNamedHeading =
+      /^(population growth|traffic enrichment|traffic enriched|urban hotspots?)/i.test(
+        line,
+      ) && line.length <= 80;
+
+    if (isProfileHeading || isNamedHeading) {
       elements.push(
         <p key={elements.length} className="mt-2 text-[13px] font-semibold text-gray-900">
           {line}
@@ -125,6 +202,10 @@ export function FormattedInsights({ text }: FormattedInsightsProps) {
       </p>,
     );
   }
+
+  // Flush any trailing list items.
+  flushOrdered();
+  flushBullets();
 
   return <div className="space-y-1.5 leading-relaxed">{elements}</div>;
 }

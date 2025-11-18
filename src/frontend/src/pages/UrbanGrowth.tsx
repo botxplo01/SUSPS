@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { AreaBadge } from "../components/AreaBadge";
 import { ModeToggle } from "../components/ModeToggle";
 import { DescriptionSection } from "../components/DescriptionSection";
@@ -18,6 +18,7 @@ import type {
   ExportPayload,
   ExportPage,
   ExportFormat,
+  ChartExportHandle,
 } from "../types";
 import { useAdvisory } from "../hooks/useAdvisory";
 import { useGrowthSeries } from "../hooks/useSeries";
@@ -119,6 +120,7 @@ export function UrbanGrowthPage({
   const [predictError, setPredictError] = useState<string | null>(null);
   const [optimalGrowth, setOptimalGrowth] = useState<ChartPoint[]>([]);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const chartRef = useRef<ChartExportHandle | null>(null);
   const [exportTarget, setExportTarget] = useState<GrowthExportTarget | null>(
     null,
   );
@@ -244,7 +246,10 @@ export function UrbanGrowthPage({
     setIsExportDialogOpen(true);
   };
 
-  const buildExportPage = (target: GrowthExportTarget): ExportPage => {
+  const buildExportPage = (
+    target: GrowthExportTarget,
+    chartImage?: string | null,
+  ): ExportPage => {
     const areaName = selectedArea?.name ?? "No area selected";
     const description = selectedArea
       ? `Urban Growth module for ${selectedArea.name} in ${mode} mode.`
@@ -281,6 +286,7 @@ export function UrbanGrowthPage({
                 label: s.label,
                 points: s.points,
               })),
+              image_data: chartImage ?? undefined,
             },
           ];
 
@@ -298,7 +304,8 @@ export function UrbanGrowthPage({
 
   const handleConfirmExport = async (format: ExportFormat) => {
     if (!exportTarget) return;
-    const page = buildExportPage(exportTarget);
+    const chartImage = chartRef.current ? await chartRef.current.capturePng() : null;
+    const page = buildExportPage(exportTarget, chartImage);
     const payload: ExportPayload = {
       export_format: format,
       pages: [page],
@@ -589,6 +596,7 @@ export function UrbanGrowthPage({
 
       <div className="grid gap-4 md:grid-cols-2">
         <BarChart
+          ref={chartRef}
           title="Population Growth"
           series={growthSeries}
           xLabel="Year"

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { AreaBadge } from "../components/AreaBadge";
 import { DescriptionSection } from "../components/DescriptionSection";
 import { LineChart } from "../components/LineChart";
@@ -14,6 +14,7 @@ import type {
   ExportPayload,
   ExportPage,
   ExportFormat,
+  ChartExportHandle,
 } from "../types";
 import { useAdvisory } from "../hooks/useAdvisory";
 import {
@@ -45,6 +46,9 @@ export function DashboardPage({
   const { points: energyPoints } = useEnergySeries(areaId);
   const { points: trafficPoints } = useTrafficSeries(areaId);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const growthChartRef = useRef<ChartExportHandle | null>(null);
+  const energyChartRef = useRef<ChartExportHandle | null>(null);
+  const trafficChartRef = useRef<ChartExportHandle | null>(null);
   const [exportTarget, setExportTarget] = useState<DashboardExportTarget | null>(
     null,
   );
@@ -62,7 +66,7 @@ export function DashboardPage({
   const insightsText =
     selectedArea && !loading && !error && insights ? insights : undefined;
 
-  const buildGrowthPage = (): ExportPage => ({
+  const buildGrowthPage = (growthImage?: string | null): ExportPage => ({
     page_name: "Urban Growth",
     mode: "REAL",
     area_name: areaName,
@@ -96,11 +100,12 @@ export function DashboardPage({
             points: growthPoints ?? [],
           },
         ],
+        image_data: growthImage ?? undefined,
       },
     ],
   });
 
-  const buildEnergyPage = (): ExportPage => ({
+  const buildEnergyPage = (energyImage?: string | null): ExportPage => ({
     page_name: "Energy",
     mode: "REAL",
     area_name: areaName,
@@ -131,11 +136,12 @@ export function DashboardPage({
             points: energyPoints ?? [],
           },
         ],
+        image_data: energyImage ?? undefined,
       },
     ],
   });
 
-  const buildTrafficPage = (): ExportPage => ({
+  const buildTrafficPage = (trafficImage?: string | null): ExportPage => ({
     page_name: "Traffic",
     mode: "REAL",
     area_name: areaName,
@@ -169,23 +175,71 @@ export function DashboardPage({
             points: trafficPoints ?? [],
           },
         ],
+        image_data: trafficImage ?? undefined,
       },
     ],
   });
 
-  const buildPagesForTarget = (target: DashboardExportTarget): ExportPage[] => {
-    const allPages = [buildGrowthPage(), buildEnergyPage(), buildTrafficPage()];
+  const buildPagesForTarget = (
+    target: DashboardExportTarget,
+    images: { growth?: string | null; energy?: string | null; traffic?: string | null },
+  ): ExportPage[] => {
+    const growthPage = buildGrowthPage(images.growth);
+    const energyPage = buildEnergyPage(images.energy);
+    const trafficPage = buildTrafficPage(images.traffic);
+    const allPages = [growthPage, energyPage, trafficPage];
+
+    // Holistic export from the Dashboard header: prepend a dedicated Dashboard
+    // page that carries the AI Analysis & Insights section, then follow with the
+    // domain-specific pages. The backend will render the insights only once at
+    // the top of the document (first page).
     if (target.kind === "page") {
-      return allPages;
+      const dashboardDescription = selectedArea
+        ? `Dashboard overview for ${selectedArea.name} in REAL mode across growth, energy, and traffic.`
+        : "Dashboard overview in REAL mode across growth, energy, and traffic.";
+
+      const dashboardPage: ExportPage = {
+        page_name: "Dashboard",
+        mode: "REAL",
+        area_name: areaName,
+        area_id: areaIdValue,
+        description: dashboardDescription,
+        insights: insightsText,
+        tables: [],
+        charts: [],
+      };
+
+      // Strip insights from the domain pages in the holistic export so AI
+      // Analysis & Insights is shown only once at the top of the document.
+      const pagesWithoutInsights = allPages.map((p) => ({ ...p, insights: undefined }));
+      return [dashboardPage, ...pagesWithoutInsights];
     }
-    if (target.id === "growth") return [allPages[0]];
-    if (target.id === "energy") return [allPages[1]];
-    return [allPages[2]];
+
+    // Single-chart exports from the Dashboard still include the dashboard-level
+    // advisory on the single page.
+    if (target.id === "growth") return [growthPage];
+    if (target.id === "energy") return [energyPage];
+    return [trafficPage];
   };
 
   const handleConfirmExport = async (format: ExportFormat) => {
     if (!exportTarget) return;
-    const pages = buildPagesForTarget(exportTarget);
+
+    const growthImage = growthChartRef.current
+      ? await growthChartRef.current.capturePng()
+      : null;
+    const energyImage = energyChartRef.current
+      ? await energyChartRef.current.capturePng()
+      : null;
+    const trafficImage = trafficChartRef.current
+      ? await trafficChartRef.current.capturePng()
+      : null;
+
+    const pages = buildPagesForTarget(exportTarget, {
+      growth: growthImage,
+      energy: energyImage,
+      traffic: trafficImage,
+    });
     const payload: ExportPayload = {
       export_format: format,
       pages,
@@ -256,6 +310,7 @@ export function DashboardPage({
 
       <div className="grid gap-4 md:grid-cols-2">
         <BarChart
+          ref={growthChartRef}
           title="Urban Growth Summary"
           data={growthPoints}
           accentColor="#91e03f"
@@ -264,6 +319,7 @@ export function DashboardPage({
           onExport={handleOpenGrowthChartExport}
         />
         <LineChart
+          ref={energyChartRef}
           title="Energy Summary"
           data={energyPoints}
           accentColor="#f87b14"
@@ -275,6 +331,7 @@ export function DashboardPage({
 
       <div className="grid gap-4 md:grid-cols-2">
         <Histogram
+          ref={trafficChartRef}
           title="Traffic Summary"
           data={trafficPoints}
           accentColor="#f24152"

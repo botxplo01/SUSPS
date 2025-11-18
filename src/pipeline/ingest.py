@@ -52,57 +52,106 @@ def fetch_worldpop(
 def fetch_energy_demand(region: str = config.Defaults.region) -> pd.DataFrame:
     """Energy demand by sector from raw directory if available.
 
-    If ENERGY_PATH/ENERGY_DIR points to a directory with a
-    'Final_Consumption' CSV, parse it and convert to MWh. Otherwise
-    return a small synthetic dataset to keep pipeline runnable.
+    If ENERGY_PATH/ENERGY_DIR points to a directory with multiple CSVs (for
+    coverage, access, and use), this function attempts to aggregate all
+    consumption-like columns into a single sector-level demand table. It
+    looks for columns whose names suggest energy quantities (gwh, mwh,
+    demand, consumption, energy, use, usage, value) and ignores purely
+    categorical/coverage-only fields.
+
+    When no suitable raw inputs are found, it returns a small synthetic
+    dataset to keep the pipeline runnable.
     """
     try:
         energy_dir = getattr(config, "ENERGY_PATH", None)
         if energy_dir and Path(energy_dir).exists() and Path(energy_dir).is_dir():
-            # find a likely final consumption file
-            candidates: list[Path] = []
-            for p in Path(energy_dir).glob("*.csv"):
-                name = p.name.lower()
-                if "final_consumption" in name or "final consumption" in name:
-                    candidates.append(p)
-            src = candidates[0] if candidates else None
-            if src is not None:
-                df = pd.read_csv(src)
-                # normalize columns
+            root = Path(energy_dir)
+            frames: list[pd.DataFrame] = []
+
+            for csv_path in root.glob("*.csv"):
+                try:
+                    df = pd.read_csv(csv_path)
+                except Exception:
+                    continue
+                if df.empty:
+                    continue
+
+                # Normalize columns to lower-case for matching
+                df = df.copy()
                 df.columns = [str(c).strip().lower() for c in df.columns]
-                # case 1: long-form with sector + gwh/value
+
+                # Identify numeric columns that look like energy quantities
+                energy_cols: list[str] = []
+                for c in df.columns:
+                    if not pd.api.types.is_numeric_dtype(df[c]):
+                        continue
+                    cl = c.lower()
+                    if any(
+                        token in cl
+                        for token in [
+                            "gwh",
+                            "mwh",
+                            "kwh",
+                            "demand",
+                            "consumption",
+                            "energy",
+                            "use",
+                            "usage",
+                            "value",
+                        ]
+                    ):
+                        energy_cols.append(c)
+
+                if not energy_cols:
+                    # Skip files that do not contain obvious energy quantities
+                    continue
+
+                # Case 1: long-form with explicit "sector" column
                 if "sector" in df.columns:
-                    num_cols = [
-                        c
-                        for c in df.columns
-                        if c not in {"sector", "year"}
-                        and pd.api.types.is_numeric_dtype(df[c])
-                    ]
-                    if "gwh" in df.columns:
-                        out = df[["sector", "gwh"]].copy()
-                        out.rename(columns={"gwh": "demand_mwh"}, inplace=True)
-                        out["demand_mwh"] = out["demand_mwh"].astype(float) * 1000.0
-                        return out
-                    elif "value" in df.columns:
-                        out = df[["sector", "value"]].copy()
-                        out.rename(columns={"value": "demand_mwh"}, inplace=True)
-                        out["demand_mwh"] = out["demand_mwh"].astype(float) * 1000.0
-                        return out
-                    elif num_cols:
-                        out = df[["sector"]].copy()
-                        out["demand_mwh"] = (
-                            df[num_cols].sum(axis=1).astype(float) * 1000.0
+                    out = df[["sector"] + energy_cols].copy()
+                    # Sum numeric energy columns into a single demand_mwh field
+                    out["demand_mwh"] = out[energy_cols].sum(axis=1).astype(float)
+                    out = out[["sector", "demand_mwh"]]
+                    frames.append(out)
+                    continue
+
+                # Case 2: wide-form where each numeric column represents a sector
+                # (e.g. residential, commercial, industrial). Melt into sector/value
+                if len(energy_cols) > 1:
+                    melted = df[energy_cols].sum().reset_index()
+                    melted.columns = ["sector", "demand_mwh"]
+                    frames.append(melted)
+                    continue
+
+                # Case 3: a single numeric energy column without sectors. Use a
+                # generic sector name based on the file and column.
+                if len(energy_cols) == 1:
+                    c = energy_cols[0]
+                    total_val = float(df[c].sum())
+                    if total_val <= 0:
+                        continue
+                    sector_name = root.name or "energy"
+                    frames.append(
+                        pd.DataFrame(
+                            {"sector": [sector_name], "demand_mwh": [total_val]}
                         )
-                        return out
-                # case 2: wide-form with sector columns: sum numeric columns and melt
-                numeric_cols = [
-                    c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])
-                ]
-                if numeric_cols and len(numeric_cols) > 1:
-                    melted = df[numeric_cols].sum().reset_index()
-                    melted.columns = ["sector", "gwh"]
-                    melted["demand_mwh"] = melted["gwh"].astype(float) * 1000.0
-                    return melted[["sector", "demand_mwh"]]
+                    )
+
+            if frames:
+                merged = pd.concat(frames, ignore_index=True)
+                # Convert any GWh-like totals to MWh when clearly in GWh
+                # (heuristic: very small numbers are assumed to be GWh)
+                if merged["demand_mwh"].max() < 1_000:
+                    merged["demand_mwh"] = merged["demand_mwh"].astype(float) * 1000.0
+
+                # Group by sector to avoid duplicates across files
+                grouped = (
+                    merged.groupby("sector", as_index=False)["demand_mwh"]
+                    .sum()
+                    .sort_values("demand_mwh", ascending=False)
+                )
+                if not grouped.empty:
+                    return grouped
         # fallback synthetic
     except Exception:
         pass
@@ -221,62 +270,105 @@ def fetch_environment() -> pd.DataFrame:
 
 
 def _tomtom_sample_flows(lat: float, lon: float, api_key: str) -> pd.DataFrame:
-    """Sample TomTom flow segment data around a center point and derive pseudo volumes.
+    """Sample TomTom flow segment data and derive a 24h pseudo volume profile.
 
-    Note: TomTom does not provide volumes directly here; we derive a rough proxy.
+    This helper attempts to build an hourly profile for the past 24 hours by
+    querying TomTom's flowSegmentData endpoint at hourly intervals around the
+    current time (UTC). When the `dateTime` parameter is not supported or
+    requests fail, callers should fall back to a synthetic profile.
+
+    Note: TomTom does not provide volumes directly here; we derive a rough
+    proxy from speed vs free-flow speed and then aggregate per hour.
     """
-    rows = []
+    rows: list[dict] = []
     # small grid around center
     steps = [(-0.03, -0.03), (-0.03, 0.03), (0.0, 0.0), (0.03, -0.03), (0.03, 0.03)]
-    for i, (dlat, dlon) in enumerate(steps, start=1):
-        plat, plon = lat + dlat, lon + dlon
-        try:
-            r = requests.get(
-                "https://api.tomtom.com/traffic/services/4/flowSegmentData/relative0/10/json",
-                params={"point": f"{plat},{plon}", "key": api_key},
-                timeout=10,
-            )
-            r.raise_for_status()
-            js = r.json().get("flowSegmentData", {})
-            speed = float(js.get("currentSpeed", js.get("currentSpeedUncapped", 30.0)))
-            free = float(js.get("freeFlowSpeed", max(speed, 30.0)))
-            ratio = min(max(free / max(speed, 1.0), 0.5), 4.0)
-            # proxy capacity (veh/h) scaled by ratio
-            base_cap = 600
-            vph = int(base_cap * ratio)
-            rows.append(
-                {
-                    "corridor": f"TT_{i}",
-                    "hour": datetime.now().hour,
-                    "veh_per_hour": vph,
-                    "mode_share_bus": 0.18,
-                }
-            )
-        except Exception:
-            # skip point on failure
-            continue
+    now_utc = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+
+    for offset in range(24):
+        ts = now_utc - timedelta(hours=23 - offset)
+        hour = ts.hour
+        date_time_str = ts.isoformat(timespec="seconds").replace("+00:00", "Z")
+        for i, (dlat, dlon) in enumerate(steps, start=1):
+            plat, plon = lat + dlat, lon + dlon
+            try:
+                params = {"point": f"{plat},{plon}", "key": api_key}
+                # Best-effort: ask for historical snapshots when supported.
+                params["dateTime"] = date_time_str
+                r = requests.get(
+                    "https://api.tomtom.com/traffic/services/4/flowSegmentData/relative0/10/json",
+                    params=params,
+                    timeout=10,
+                )
+                r.raise_for_status()
+                js = r.json().get("flowSegmentData", {})
+                speed = float(
+                    js.get("currentSpeed", js.get("currentSpeedUncapped", 30.0))
+                )
+                free = float(js.get("freeFlowSpeed", max(speed, 30.0)))
+                ratio = min(max(free / max(speed, 1.0), 0.5), 4.0)
+                # proxy capacity (veh/h) scaled by ratio
+                base_cap = 600
+                vph = int(base_cap * ratio)
+                rows.append(
+                    {
+                        "corridor": f"TT_{i}",
+                        "hour": hour,
+                        "veh_per_hour": vph,
+                        "mode_share_bus": 0.18,
+                    }
+                )
+            except Exception:
+                # skip point on failure for this hour/segment
+                continue
+
     return pd.DataFrame(rows)
 
 
 def fetch_traffic() -> pd.DataFrame:
     """Traffic flows by corridor and hour with provider selection.
 
-    Defaults to TomTom if configured; falls back to synthetic.
+    Defaults to TomTom if configured; falls back to a synthetic 24h profile.
     """
+
+    # Canonical 24h synthetic profile used whenever the provider is unavailable
+    # or TomTom coverage is too sparse (e.g. only a handful of hours succeed).
+    hours = list(range(24))
+    synthetic_curve = [
+        (
+            150
+            if h < 6
+            else (
+                850 if h in (7, 8) else 400 if h < 16 else 900 if h in (17, 18) else 200
+            )
+        )
+        for h in hours
+    ]
     fallback = pd.DataFrame(
         {
-            "corridor": ["A1", "A1", "M4", "M4"],
-            "hour": [8, 17, 8, 17],
-            "veh_per_hour": [850, 1200, 420, 700],
-            "mode_share_bus": [0.15, 0.12, 0.22, 0.18],
+            "corridor": ["A1"] * 24,
+            "hour": hours,
+            "veh_per_hour": synthetic_curve,
+            "mode_share_bus": [0.18] * 24,
         }
     )
     try:
         provider = (getattr(config, "TRAFFIC_PROVIDER", "tomtom") or "tomtom").lower()
         if provider == "tomtom" and getattr(config, "TOMTOM_API_KEY", None):
             lat, lon = _city_coords()
-            df = _tomtom_sample_flows(lat, lon, config.TOMTOM_API_KEY)  # type: ignore[arg-type]
-            return _safe_df(df, fallback)
+            df = _tomtom_sample_flows(
+                lat, lon, config.TOMTOM_API_KEY  # type: ignore[arg-type]
+            )
+            if isinstance(df, pd.DataFrame) and not df.empty and "hour" in df.columns:
+                try:
+                    hours_covered = int(df["hour"].nunique())
+                except Exception:
+                    hours_covered = 0
+                # Require a minimum diversity of hours to avoid degenerate
+                # single-hour profiles (e.g. only hour=0 with ~600 veh/h).
+                if hours_covered >= 6:
+                    return df
+            # If TomTom data is missing or too sparse, fall back to synthetic.
         # placeholder for future OSM-based option
         return fallback
     except Exception:
@@ -331,9 +423,11 @@ def fetch_air_quality() -> pd.DataFrame:
         # Query last 30 days in Nairobi; OpenAQ v2
         # Use timezone-aware UTC timestamps (PEP 495/PEP 564 compliant)
         now_utc = datetime.now(timezone.utc)
-        date_from = (now_utc - timedelta(days=30)).isoformat(
-            timespec="seconds"
-        ).replace("+00:00", "Z")
+        date_from = (
+            (now_utc - timedelta(days=30))
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z")
+        )
         params = {
             "city": "Nairobi",
             "country": "KE",

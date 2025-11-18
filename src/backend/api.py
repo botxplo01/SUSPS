@@ -116,6 +116,10 @@ class ExportChart(BaseModel):
     x_label: Optional[str] = None
     y_label: Optional[str] = None
     series: list[ExportChartSeries]
+    # Optional base64-encoded PNG (or data URL) of the chart as rendered in the
+    # frontend. When provided, the PDF export embeds this image directly instead
+    # of re-drawing the chart from coordinates.
+    image_data: Optional[str] = None
 
 
 class ExportTable(BaseModel):
@@ -446,10 +450,15 @@ def traffic_summary(area_id: Optional[int] = Query(None)):
         import pandas as pd
         from src.pipeline import config as _cfg
 
-        f = _cfg.PROCESSED_DIR / "traffic_features.csv"
+        base_dir = _cfg.PROCESSED_DIR
+        f = base_dir / "traffic_enriched_features.csv"
+        if not f.exists():
+            f = base_dir / "traffic_features.csv"
         if not f.exists():
             return {"items": []}
         df = pd.read_csv(f)
+        if "hour" not in df.columns or "veh_per_hour" not in df.columns:
+            return {"items": []}
         g = df.groupby("hour")["veh_per_hour"].mean().reset_index()
         items = [
             {
@@ -521,18 +530,28 @@ def environment_features(area_id: Optional[int] = Query(None)):
                 {
                     "area_id": area_id,
                     "month": month,
-                    "temp_c": float(r.get("temp_c")) if "temp_c" in df.columns else None,
-                    "rain_mm": float(r.get("rain_mm")) if "rain_mm" in df.columns else None,
-                    "cooling_deg": float(r.get("cooling_deg"))
-                    if "cooling_deg" in df.columns
-                    else None,
-                    "wet_month": int(r.get("wet_month")) if "wet_month" in df.columns else None,
+                    "temp_c": (
+                        float(r.get("temp_c")) if "temp_c" in df.columns else None
+                    ),
+                    "rain_mm": (
+                        float(r.get("rain_mm")) if "rain_mm" in df.columns else None
+                    ),
+                    "cooling_deg": (
+                        float(r.get("cooling_deg"))
+                        if "cooling_deg" in df.columns
+                        else None
+                    ),
+                    "wet_month": (
+                        int(r.get("wet_month")) if "wet_month" in df.columns else None
+                    ),
                     "pm25": float(r.get("pm25")) if "pm25" in df.columns else None,
                     "pm10": float(r.get("pm10")) if "pm10" in df.columns else None,
                     "o3": float(r.get("o3")) if "o3" in df.columns else None,
-                    "pollution_index": float(r.get("pollution_index"))
-                    if "pollution_index" in df.columns
-                    else None,
+                    "pollution_index": (
+                        float(r.get("pollution_index"))
+                        if "pollution_index" in df.columns
+                        else None
+                    ),
                 }
             )
         return {"items": items}
@@ -557,11 +576,7 @@ def air_quality_daily(
                 q = db.query(AirQualityDaily)
                 if area_id is not None:
                     q = q.filter(AirQualityDaily.area_id == area_id)
-                rows = (
-                    q.order_by(AirQualityDaily.date.desc())
-                    .limit(limit)
-                    .all()
-                )
+                rows = q.order_by(AirQualityDaily.date.desc()).limit(limit).all()
                 items = [
                     {
                         "id": r.id,
@@ -745,9 +760,7 @@ def hotspots_scores(
         if admin_unit:
             target = admin_unit.strip().lower()
             return [
-                it
-                for it in items
-                if str(it.get("admin_unit", "")).lower() == target
+                it for it in items if str(it.get("admin_unit", "")).lower() == target
             ]
         if zone_id:
             target = zone_id.strip().lower()
@@ -767,7 +780,9 @@ def hotspots_scores(
                 q = db.query(HotspotScore)
                 if year is not None:
                     q = q.filter(HotspotScore.year == year)
-                rows = q.order_by(HotspotScore.admin_unit.asc(), HotspotScore.year.asc()).all()
+                rows = q.order_by(
+                    HotspotScore.admin_unit.asc(), HotspotScore.year.asc()
+                ).all()
                 items = [
                     {
                         "id": r.id,
@@ -854,18 +869,32 @@ def list_areas():
     """List known analysis areas.
 
     When the database is enabled, this prefers the `areas` table and falls
-    back to the legacy `urban_areas` table. When the database is disabled,
-    it returns a synthetic single area based on DATA_CITY.
+    back to the legacy `urban_areas` table. When the database is disabled or
+    no rows are found, it returns a synthetic single area based on the
+    configured city (DATA_CITY / CITY env) so that the UI always has at least
+    one selectable area such as "Nairobi".
     """
 
-    # No DB: synthetic single-area view derived from pipeline config
-    if not _DB_ENABLED:
+    def _fallback_single_area() -> Dict[str, Any]:
+        """Return a synthetic single-area view derived from pipeline config/env.
+
+        This keeps the UI usable even when the database is disabled, empty, or
+        misconfigured by exposing a city-level area (e.g. Nairobi) that matches
+        the current DATA_CITY/CITY configuration.
+        """
+
         try:
             from src.pipeline import config as _cfg  # type: ignore
 
-            city = getattr(_cfg, "DATA_CITY", None) or os.getenv("DATA_CITY", "Nairobi")
+            city = (
+                getattr(_cfg, "DATA_CITY", None)
+                or os.getenv("DATA_CITY")
+                or getattr(_cfg, "_CITY", None)
+                or os.getenv("CITY", "Nairobi")
+            )
         except Exception:
-            city = os.getenv("DATA_CITY", "Nairobi")
+            city = os.getenv("DATA_CITY") or os.getenv("CITY", "Nairobi")
+
         return {
             "items": [
                 {
@@ -877,7 +906,12 @@ def list_areas():
             ]
         }
 
-    # DB-enabled: prefer the new Area table, fall back to UrbanArea when needed
+    # No DB: synthetic single-area view
+    if not _DB_ENABLED:
+        return _fallback_single_area()
+
+    # DB-enabled: prefer the new Area table, fall back to UrbanArea when needed,
+    # and finally fall back to a synthetic city area when no rows exist.
     try:
         with SessionLocal() as db:  # type: ignore[name-defined]
             try:
@@ -909,19 +943,25 @@ def list_areas():
                 .limit(100)
                 .all()
             )
-            return {
-                "items": [
-                    {
-                        "id": r[0],
-                        "area_id": r[0],
-                        "name": r[1],
-                        "area_type": "unknown",
-                    }
-                    for r in rows
-                ]
-            }
-    except Exception as e:
-        return {"items": [], "detail": str(e)}
+            if rows:
+                return {
+                    "items": [
+                        {
+                            "id": r[0],
+                            "area_id": r[0],
+                            "name": r[1],
+                            "area_type": "unknown",
+                        }
+                        for r in rows
+                    ]
+                }
+
+        # DB enabled but no rows in either table: fall back to synthetic city
+        return _fallback_single_area()
+    except Exception:
+        # On any DB error, degrade gracefully to a synthetic city area so the
+        # search UI still exposes e.g. "Nairobi" as a selectable area.
+        return _fallback_single_area()
 
 
 @app.get("/processed_data")
@@ -1216,15 +1256,22 @@ def _build_pdf(payload: ExportPayload) -> bytes:
             Spacer,
             Table as RLTable,
             TableStyle,
+            Image as RLImage,
+            ListFlowable,
+            ListItem,
         )
         from reportlab.lib import colors  # type: ignore
+        from reportlab.graphics.shapes import Drawing, Line as RLLine  # type: ignore
+        from reportlab.graphics.shapes import PolyLine as RLPolyLine  # type: ignore
     except Exception as exc:  # pragma: no cover - optional dependency
         raise ImportError(
             "PDF export requires the 'reportlab' package. Install it with 'pip install reportlab'."
         ) from exc
 
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=48, bottomMargin=48)
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=48, bottomMargin=48
+    )
     styles = getSampleStyleSheet()
     story: List[Any] = []
 
@@ -1247,7 +1294,156 @@ def _build_pdf(payload: ExportPayload) -> bytes:
         if page.description:
             story.append(Spacer(1, 6))
             story.append(Paragraph(page.description, styles["BodyText"]))
-        story.append(Spacer(1, 12))
+        story.append(Spacer(1, 10))
+
+        # Helper to render AI Analysis & Insights in a clean, markdown-aware layout
+        def _render_insights(text: str) -> None:
+            """Render advisory markdown-ish text into headings, paragraphs, and lists.
+
+            Mirrors the frontend's FormattedInsights behaviour:
+            - Drops placeholder "Insights" headings and underline rows.
+            - Normalises inline markdown (###, **bold**, lists) into PDF headings and lists.
+            - Removes any embedded SUSPS footer line (PDF footer handles branding).
+            """
+
+            import re
+
+            if not text or not text.strip():
+                return
+
+            # Normalise newlines and gently split markdown-style headings and list
+            # items so layout is closer to the on-screen view.
+            normalised = text.replace("\r\n", "\n")
+            normalised = re.sub(r"\s*###\s+", "\n### ", normalised)
+            normalised = re.sub(
+                r"\s*\*\*\s*Insights\s*\*\*", "\nInsights\n", normalised, flags=re.I
+            )
+            normalised = re.sub(r"(\S)\s+(\d+\.\s)", r"\1\n\2", normalised)
+            normalised = re.sub(r"(\S)\s+(\*\s+)", r"\1\n\2", normalised)
+
+            lines = normalised.split("\n")
+
+            pending_ordered: list[str] = []
+            pending_bullets: list[str] = []
+
+            def _flush_lists() -> None:
+                if pending_ordered:
+                    items = [
+                        Paragraph(it, styles["BodyText"]) for it in pending_ordered
+                    ]
+                    story.append(
+                        ListFlowable(
+                            [ListItem(i) for i in items],
+                            bulletType="1",
+                            start="1",
+                            leftIndent=18,
+                        )
+                    )
+                    pending_ordered.clear()
+                if pending_bullets:
+                    items = [
+                        Paragraph(it, styles["BodyText"]) for it in pending_bullets
+                    ]
+                    story.append(
+                        ListFlowable(
+                            [ListItem(i) for i in items],
+                            bulletType="bullet",
+                            leftIndent=18,
+                        )
+                    )
+                    pending_bullets.clear()
+
+            for raw in lines:
+                line = raw.strip()
+                if not line:
+                    continue
+
+                # Drop embedded SUSPS footer and placeholder "Insights" headings.
+                if "Smart Urban Simulation and Prediction System (SUSPS)" in line:
+                    continue
+                lower = line.lower()
+                if lower == "insights" or lower.startswith("### insights"):
+                    continue
+                if re.fullmatch(r"[=_-]+", line):
+                    continue
+
+                # Remove dev markers and inline (bold) hints
+                if "(remove this)" in lower:
+                    continue
+                line = re.sub(r"\(bold\)", "", line, flags=re.I).strip()
+                if not line:
+                    continue
+
+                # Ordered list item: "1. text"
+                m_ord = re.match(r"^(\d+)\.\s+(.*)$", line)
+                if m_ord:
+                    item = re.sub(r"\*\*", "", m_ord.group(2)).strip()
+                    if item:
+                        pending_ordered.append(item)
+                    continue
+
+                # Unordered bullet item: "- text" or "* text"
+                m_bul = re.match(r"^[-*]\s+(.*)$", line)
+                if m_bul:
+                    item = re.sub(r"\*\*", "", m_bul.group(1)).strip()
+                    if item:
+                        pending_bullets.append(item)
+                    continue
+
+                # Non-list content: flush any accumulated lists first.
+                _flush_lists()
+
+                # Strip remaining markdown markers (heading hashes, bold markers).
+                line = re.sub(r"^#{1,6}\s*", "", line)
+                line = line.replace("**", "")
+                if not line:
+                    continue
+
+                # Main title lines like "Urban Analytics Insights for Nairobi".
+                if re.match(r"^Urban Analytics Insights for ", line, flags=re.I):
+                    story.append(Paragraph(line, styles["Heading4"]))
+                    story.append(Spacer(1, 4))
+                    continue
+
+                # Section headings such as "Recommended Actions", "Energy Profile Analysis",
+                # "Trend Analysis", "Traffic Analysis for Nairobi", etc.
+                if (
+                    re.match(
+                        r"^(Recommended Actions?|Energy Profile|.*Profile Analysis|.*Analysis for .+|Population Growth|Traffic Enriched|Urban Hotspots?)",
+                        line,
+                        flags=re.I,
+                    )
+                    and len(line) <= 100
+                ):
+                    story.append(Paragraph(line, styles["Heading4"]))
+                    story.append(Spacer(1, 3))
+                    continue
+
+                # Sub-headings: Short-term / Medium-term / Long-term.
+                if (
+                    re.match(r"^Short-term\b", line, flags=re.I)
+                    or re.match(r"^Medium-term\b", line, flags=re.I)
+                    or re.match(r"^Long-term\b", line, flags=re.I)
+                ):
+                    base, _, suffix = line.partition(" ")
+                    story.append(
+                        Paragraph(f"<b>{base}</b>{suffix}", styles["BodyText"])
+                    )
+                    story.append(Spacer(1, 2))
+                    continue
+
+                # Default: paragraph text.
+                story.append(Paragraph(line, styles["BodyText"]))
+                story.append(Spacer(1, 2))
+
+            _flush_lists()
+            story.append(Spacer(1, 8))
+
+        # Show AI Analysis & Insights immediately after the metadata for the
+        # first page only, so it appears once at the top of the document.
+        if idx == 0 and page.insights:
+            story.append(Paragraph("AI Analysis & Insights", styles["Heading3"]))
+            _render_insights(page.insights)
 
         # Tables
         for table in page.tables:
@@ -1270,49 +1466,125 @@ def _build_pdf(payload: ExportPayload) -> bytes:
             story.append(rl_table)
             story.append(Spacer(1, 12))
 
-        # Charts rendered as tables (x vs series)
+        # Charts rendered as images when provided, with a vector fallback
         for chart in page.charts:
             story.append(Paragraph(chart.title, styles["Heading3"]))
-            x_values: List[Any] = []
+
+            # If the frontend provided a PNG (or data URL) of the chart, embed it
+            # directly so the PDF matches the on-screen visualization as closely
+            # as possible.
+            img_data = getattr(chart, "image_data", None)
+            if img_data:
+                try:
+                    import base64
+
+                    # NOTE: avoid shadowing the outer `payload` variable (the
+                    # ExportPayload) so that footer_text and other metadata
+                    # remain accessible after this block.
+                    data_url = img_data
+                    # Support data URLs like "data:image/png;base64,...".
+                    if "," in data_url:
+                        _, data_url = data_url.split(",", 1)
+                    raw = base64.b64decode(data_url)
+                    img_buf = io.BytesIO(raw)
+                    img = RLImage(img_buf, width=420, height=220)
+                    story.append(img)
+                    story.append(Spacer(1, 12))
+                    continue
+                except Exception:
+                    # Fall back to vector rendering below if anything goes wrong.
+                    pass
+
+            # Flatten all points to determine global x/y ranges
+            all_points: List[Dict[str, Any]] = []
             for series in chart.series:
                 for pt in series.points:
-                    x_val = pt.get("x")
-                    if x_val not in x_values:
-                        x_values.append(x_val)
-            header = ["x"] + [s.label for s in chart.series]
-            data: List[List[Any]] = [header]
-            for x_val in x_values:
-                row: List[str] = [str(x_val)]
-                for series in chart.series:
-                    val = None
-                    for pt in series.points:
-                        if pt.get("x") == x_val:
-                            val = pt.get("y")
-                            break
-                    row.append("" if val is None else str(val))
-                data.append(row)
-            rl_table = RLTable(data, hAlign="LEFT")
-            rl_table.setStyle(
-                TableStyle(
-                    [
-                        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-                        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                        ("FONTSIZE", (0, 0), (-1, -1), 8),
-                        ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
-                    ]
+                    # Defensive: ensure required keys exist
+                    if "x" in pt and "y" in pt:
+                        all_points.append(pt)
+            if not all_points:
+                continue
+
+            xs = [float(p.get("x", 0.0)) for p in all_points]
+            ys = [float(p.get("y", 0.0)) for p in all_points]
+            min_x, max_x = min(xs), max(xs)
+            min_y, max_y = min(ys), max(ys)
+            if max_x == min_x:
+                max_x = min_x + 1.0
+            if max_y == min_y:
+                max_y = min_y + 1.0
+
+            def _nx(v: float) -> float:
+                return (v - min_x) / (max_x - min_x) if max_x != min_x else 0.0
+
+            def _ny(v: float) -> float:
+                return (v - min_y) / (max_y - min_y) if max_y != min_y else 0.0
+
+            # Drawing area
+            width, height = 420, 220
+            left_margin, bottom_margin = 40, 30
+            plot_width = width - left_margin - 10
+            plot_height = height - bottom_margin - 20
+
+            d = Drawing(width, height)
+            # Axes
+            d.add(
+                RLLine(
+                    left_margin,
+                    bottom_margin,
+                    left_margin,
+                    bottom_margin + plot_height,
+                    strokeColor=colors.grey,
+                    strokeWidth=0.5,
                 )
             )
-            story.append(rl_table)
+            d.add(
+                RLLine(
+                    left_margin,
+                    bottom_margin,
+                    left_margin + plot_width,
+                    bottom_margin,
+                    strokeColor=colors.grey,
+                    strokeWidth=0.5,
+                )
+            )
+
+            # Plot each series as a polyline; use a basic colour cycle
+            palette = [
+                colors.HexColor("#1f77b4"),
+                colors.HexColor("#ff7f0e"),
+                colors.HexColor("#2ca02c"),
+                colors.HexColor("#d62728"),
+            ]
+            for idx_s, series in enumerate(chart.series):
+                pts: List[tuple[float, float]] = []
+                for pt in series.points:
+                    try:
+                        x_val = float(pt.get("x", 0.0))
+                        y_val = float(pt.get("y", 0.0))
+                    except Exception:
+                        continue
+                    px = left_margin + _nx(x_val) * plot_width
+                    py = bottom_margin + _ny(y_val) * plot_height
+                    pts.append((px, py))
+                if len(pts) < 2:
+                    continue
+                color = palette[idx_s % len(palette)]
+                d.add(
+                    RLPolyLine(
+                        pts,
+                        strokeColor=color,
+                        strokeWidth=1.2,
+                    )
+                )
+
+            story.append(d)
             story.append(Spacer(1, 12))
 
-        # Advisory / insights
-        if page.insights:
-            story.append(Paragraph("AI Analysis & Insights", styles["Heading3"]))
-            story.append(Paragraph(page.insights, styles["BodyText"]))
-            story.append(Spacer(1, 12))
-
-    footer_text = payload.footer_text or "Smart Urban Simulation and Prediction System (SUSPS) — © 2025 Developed by David Lameck."
+    footer_text = (
+        payload.footer_text
+        or "Smart Urban Simulation and Prediction System (SUSPS) — © 2025 Developed by David Lameck."
+    )
 
     def _footer(canvas, doc):  # type: ignore[override]
         canvas.saveState()
@@ -1336,7 +1608,9 @@ def export_documents(payload: ExportPayload):
     """
 
     if not payload.pages:
-        return JSONResponse({"detail": "No pages provided for export."}, status_code=400)
+        return JSONResponse(
+            {"detail": "No pages provided for export."}, status_code=400
+        )
 
     # Normalise page names for filenames
     def _slug(name: str) -> str:
@@ -1347,7 +1621,9 @@ def export_documents(payload: ExportPayload):
             pdf_bytes = _build_pdf(payload)
         except ImportError as exc:
             return JSONResponse({"detail": str(exc)}, status_code=503)
-        filename = f"susps_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf"
+        filename = (
+            f"susps_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pdf"
+        )
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
@@ -1542,7 +1818,9 @@ def advisory(
         bundles.setdefault("energy", [])
         bundles.setdefault("traffic", [])
 
-    res = generate_insights_from_scope(scope_l, bundles, zone_id=zone_id, scenario=scenario)
+    res = generate_insights_from_scope(
+        scope_l, bundles, zone_id=zone_id, scenario=scenario
+    )
     return {
         "scope": scope_l,
         "zone_id": zone_id,

@@ -41,12 +41,14 @@ export function HotspotMap({ optimize = false, zoneId }: MapProps) {
   const topCurrent = [...baseAreas]
     .filter((a) => (a.hotspot_score ?? 0) > 0)
     .sort((a, b) => (b.hotspot_score ?? 0) - (a.hotspot_score ?? 0))
-    .slice(0, 6);
+    .slice(0, 6)
+    .sort((a, b) => a.admin_unit.localeCompare(b.admin_unit));
 
   const topFuture = [...forecastForYear]
     .filter((a) => (a.hotspot_score ?? 0) > 0)
     .sort((a, b) => (b.hotspot_score ?? 0) - (a.hotspot_score ?? 0))
-    .slice(0, 6);
+    .slice(0, 6)
+    .sort((a, b) => a.admin_unit.localeCompare(b.admin_unit));
 
   const optimalZones = (() => {
     if (!forecastForYear.length || !baseAreas.length) return [] as {
@@ -77,15 +79,18 @@ export function HotspotMap({ optimize = false, zoneId }: MapProps) {
       .slice(0, 5);
   })();
 
+  const sortZonesByName = (zones: { admin_unit: string }[]) =>
+    zones.slice().sort((a, b) => a.admin_unit.localeCompare(b.admin_unit));
+
   const filteredOptimalZones = (() => {
-    if (!zoneId) return optimalZones;
+    if (!zoneId) return sortZonesByName(optimalZones);
     const target = zoneId.toLowerCase();
     const exact = optimalZones.filter((z) => z.admin_unit.toLowerCase() === target);
-    if (exact.length > 0) return exact;
+    if (exact.length > 0) return sortZonesByName(exact);
     const partial = optimalZones.filter((z) =>
       z.admin_unit.toLowerCase().includes(target),
     );
-    return partial.length > 0 ? partial : optimalZones;
+    return partial.length > 0 ? sortZonesByName(partial) : sortZonesByName(optimalZones);
   })();
 
   const isLoading = baseLoading || forecastLoading;
@@ -105,6 +110,32 @@ export function HotspotMap({ optimize = false, zoneId }: MapProps) {
       ] as LatLngExpression;
     });
   })();
+
+  const hasSelection = !!zoneId;
+
+  if (!hasSelection) {
+    return (
+      <section className="rounded-xl bg-white p-4 shadow-sm">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-800">
+            Hotspot Map (current vs forecast)
+          </h2>
+        </div>
+        <div className="flex h-80 items-center justify-center text-xs text-gray-500">
+          No data available.
+        </div>
+        <p className="mt-3 text-[11px] text-gray-500">
+          This panel summarizes current and forecasted hotspot scores by
+          administrative unit on top of live OpenStreetMap tiles. Areas with
+          dense population pressure, congestion, and inefficient energy use
+          appear as red circles. When Optimize is active, zones whose forecast
+          scores improve are highlighted in green as potential optimal zones. In
+          a later iteration, these scores can be joined with ward/zone GeoJSON
+          or Overpass-derived polygons to render a full choropleth map.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className="rounded-xl bg-white p-4 shadow-sm">
@@ -302,11 +333,10 @@ export function HotspotMap({ optimize = false, zoneId }: MapProps) {
         This panel summarizes current and forecasted hotspot scores by
         administrative unit on top of live OpenStreetMap tiles. Areas with dense
         population pressure, congestion, and inefficient energy use appear as
-        soft translucent red circles. When Optimize is active, zones whose
-        forecast scores improve are highlighted in soft translucent green as
-        potential optimal spots. In a later iteration, these scores can be
-        joined with ward/zone GeoJSON or Overpass-derived polygons to render a
-        full choropleth map, matching the SUSPS specification.
+        red circles. When Optimize is active, zones whose forecast scores
+        improve are highlighted in green as potential optimal zones. In a later
+        iteration, these scores can be joined with ward/zone GeoJSON or
+        Overpass-derived polygons to render a full choropleth map.
       </p>
     </section>
   );

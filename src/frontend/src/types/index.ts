@@ -43,6 +43,9 @@ export interface ExportChart {
   x_label?: string;
   y_label?: string;
   series: ExportChartSeries[];
+  // Optional base64-encoded PNG (or data URL) of the chart as rendered in the UI.
+  // When provided, the backend will embed this image directly in PDF exports.
+  image_data?: string;
 }
 
 export interface ExportTable {
@@ -66,4 +69,10 @@ export interface ExportPayload {
   export_format: ExportFormat;
   pages: ExportPage[];
   footer_text?: string;
+}
+
+// Imperative handle exposed by chart components so pages can capture
+// a PNG snapshot of the rendered SVG chart for export.
+export interface ChartExportHandle {
+  capturePng: () => Promise<string | null>;
 }

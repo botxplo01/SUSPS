@@ -158,89 +158,97 @@ def _prepare_scope_data(scope: str, bundles: Dict[str, Any]) -> Dict[str, Any]:
 
     # Enriched context from processed pipeline artifacts: environment + AQ,
     # traffic enriched (TomTom + MATATUS + OSM), and population hotspots.
-    try:
-        import pandas as pd
-        from src.pipeline import config as _cfg
+    #
+    # To keep domain pages focused, we only include these enriched cross-domain
+    # metrics for the dashboard scope. Growth/Energy/Traffic scopes use their
+    # own series without additional context.
+    if scope == "dashboard":
+        try:
+            import pandas as pd
+            from src.pipeline import config as _cfg
 
-        base_dir = _cfg.PROCESSED_DIR
+            base_dir = _cfg.PROCESSED_DIR
 
-        # Environment + AQ (monthly) -> summarize pollution index if available.
-        env_aq_path = base_dir / "environment_aq_features.csv"
-        if env_aq_path.exists():
-            env_df = pd.read_csv(env_aq_path)
-            if {"month", "temp_c"}.issubset(env_df.columns):
-                temp_points = [
-                    {"x": int(m), "y": float(v)}
-                    for m, v in zip(env_df["month"], env_df["temp_c"])
-                    if pd.notna(v)
-                ]
-                if temp_points:
-                    out["environment_temperature"] = _summarize_timeseries(
-                        temp_points, "x", "y"
-                    )
-            if "pollution_index" in env_df.columns:
-                poll_points = [
-                    {"x": int(m), "y": float(v)}
-                    for m, v in zip(env_df["month"], env_df["pollution_index"])
-                    if pd.notna(v)
-                ]
-                if poll_points:
-                    poll_summary = _summarize_timeseries(poll_points, "x", "y")
-                    poll_summary["pollution_index_avg"] = float(
-                        env_df["pollution_index"].mean()
-                    )
-                    out["environment_pollution"] = poll_summary
-
-        # Traffic enriched (TomTom + MATATUS + OSM)
-        traf_path = base_dir / "traffic_enriched_features.csv"
-        if traf_path.exists():
-            tf = pd.read_csv(traf_path)
-            if {"hour", "veh_per_hour"}.issubset(tf.columns):
-                pts = [
-                    {"x": int(h), "y": float(v)}
-                    for h, v in zip(tf["hour"], tf["veh_per_hour"])
-                    if pd.notna(v)
-                ]
-                if pts:
-                    ts = _summarize_timeseries(pts, "x", "y")
-                    # Enrich with MATATUS/OSM context if present.
-                    if "matatu_route_count" in tf.columns and not tf[
-                        "matatu_route_count"
-                    ].isna().all():
-                        ts["matatu_routes"] = float(tf["matatu_route_count"].iloc[0])
-                    if "osm_feature_count" in tf.columns:
-                        val = tf["osm_feature_count"].iloc[0]
-                        ts["osm_features"] = float(val) if pd.notna(val) else 0.0
-                    if "osm_total_km" in tf.columns:
-                        val = tf["osm_total_km"].iloc[0]
-                        ts["osm_total_km"] = float(val) if pd.notna(val) else 0.0
-                    out["traffic_enriched"] = ts
-
-        # Hotspot scores / optimal zones
-        hs_path = base_dir / "hotspots_areas.csv"
-        if hs_path.exists():
-            hs_df = pd.read_csv(hs_path)
-            if "hotspot_score" in hs_df.columns:
-                scores = [
-                    {"x": int(i), "y": float(v)}
-                    for i, v in enumerate(hs_df["hotspot_score"].tolist())
-                    if pd.notna(v)
-                ]
-                if scores:
-                    hs_summary = _summarize_timeseries(scores, "x", "y")
-                    if "admin_unit" in hs_df.columns:
-                        top = (
-                            hs_df.sort_values("hotspot_score", ascending=False)
-                            .head(3)["admin_unit"]
-                            .astype(str)
-                            .tolist()
+            # Environment + AQ (monthly) -> summarize pollution index if available.
+            env_aq_path = base_dir / "environment_aq_features.csv"
+            if env_aq_path.exists():
+                env_df = pd.read_csv(env_aq_path)
+                if {"month", "temp_c"}.issubset(env_df.columns):
+                    temp_points = [
+                        {"x": int(m), "y": float(v)}
+                        for m, v in zip(env_df["month"], env_df["temp_c"])
+                        if pd.notna(v)
+                    ]
+                    if temp_points:
+                        out["environment_temperature"] = _summarize_timeseries(
+                            temp_points, "x", "y"
                         )
-                        if top:
-                            hs_summary["top_admin_units"] = ", ".join(top)
-                    out["urban_hotspots"] = hs_summary
-    except Exception:
-        # Enrichment is optional; advisory should still work without these artifacts.
-        pass
+                if "pollution_index" in env_df.columns:
+                    poll_points = [
+                        {"x": int(m), "y": float(v)}
+                        for m, v in zip(env_df["month"], env_df["pollution_index"])
+                        if pd.notna(v)
+                    ]
+                    if poll_points:
+                        poll_summary = _summarize_timeseries(poll_points, "x", "y")
+                        poll_summary["pollution_index_avg"] = float(
+                            env_df["pollution_index"].mean()
+                        )
+                        out["environment_pollution"] = poll_summary
+
+            # Traffic enriched (TomTom + MATATUS + OSM)
+            traf_path = base_dir / "traffic_enriched_features.csv"
+            if traf_path.exists():
+                tf = pd.read_csv(traf_path)
+                if {"hour", "veh_per_hour"}.issubset(tf.columns):
+                    pts = [
+                        {"x": int(h), "y": float(v)}
+                        for h, v in zip(tf["hour"], tf["veh_per_hour"])
+                        if pd.notna(v)
+                    ]
+                    if pts:
+                        ts = _summarize_timeseries(pts, "x", "y")
+                        # Enrich with MATATUS/OSM context if present.
+                        if "matatu_route_count" in tf.columns and not tf[
+                            "matatu_route_count"
+                        ].isna().all():
+                            ts["matatu_routes"] = float(
+                                tf["matatu_route_count"].iloc[0]
+                            )
+                        if "osm_feature_count" in tf.columns:
+                            val = tf["osm_feature_count"].iloc[0]
+                            ts["osm_features"] = float(val) if pd.notna(val) else 0.0
+                        if "osm_total_km" in tf.columns:
+                            val = tf["osm_total_km"].iloc[0]
+                            ts["osm_total_km"] = float(val) if pd.notna(val) else 0.0
+                        out["traffic_enriched"] = ts
+
+            # Hotspot scores / optimal zones
+            hs_path = base_dir / "hotspots_areas.csv"
+            if hs_path.exists():
+                hs_df = pd.read_csv(hs_path)
+                if "hotspot_score" in hs_df.columns:
+                    scores = [
+                        {"x": int(i), "y": float(v)}
+                        for i, v in enumerate(hs_df["hotspot_score"].tolist())
+                        if pd.notna(v)
+                    ]
+                    if scores:
+                        hs_summary = _summarize_timeseries(scores, "x", "y")
+                        if "admin_unit" in hs_df.columns:
+                            top = (
+                                hs_df.sort_values("hotspot_score", ascending=False)
+                                .head(3)["admin_unit"]
+                                .astype(str)
+                                .tolist()
+                            )
+                            if top:
+                                sorted_top = sorted(top, key=lambda name: name.lower())
+                                hs_summary["top_admin_units"] = ", ".join(sorted_top)
+                        out["urban_hotspots"] = hs_summary
+        except Exception:
+            # Enrichment is optional; advisory should still work without these artifacts.
+            pass
 
     return out
 

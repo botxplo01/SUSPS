@@ -177,7 +177,7 @@ Key URLs
   - SIMULATE: uses `/simulate/run` with traffic parameters such as `volume_scale`, `peak_hour_shift`, `peak_scale`, `offpeak_scale`, and `flatten_ratio`, controlled by a simulation parameters panel to represent scenarios like remote work adoption or congestion pricing.
 - Hotspot maps (React UI + OSM-based overlays)
   - Backend and pipeline are ready: `/hotspots/areas` and `/hotspots/areas/forecast` expose static and multi-year hotspot scores.
-  - React frontend renders an OpenStreetMap-based Leaflet map that overlays hotspot scores from `/hotspots/areas` and `/hotspots/areas/forecast` as soft translucent red circles; when Optimize is active, improving areas (based on forecast vs current scores) are highlighted in soft translucent green as potential optimal zones.
+  - React frontend renders an OpenStreetMap-based Leaflet map that overlays hotspot scores from `/hotspots/areas` and `/hotspots/areas/forecast` as red circles; when Optimize is active, improving areas (based on forecast vs current scores) are highlighted in green as potential optimal zones. Units in the hotspot lists and optimal-zones panel are ordered alphabetically (e.g., Unit A, Unit B, Unit C), and when no area is selected the map card shows the same "No data available." placeholder text as the other cards.
   - Joining hotspot scores with ward/zone GeoJSON or Overpass geometries to render full choropleth maps remains a future enhancement; the current implementation uses a simple radial layout around the city center.
 
 UI notes (Render):
@@ -214,7 +214,8 @@ Examples (API responses, truncated):
 
 - Backend
   - Added deterministic SIMULATE engine and `/simulate/run` endpoint over existing growth/energy/traffic outputs.
-  - Added generic time-series forecasting endpoint `/ts/forecast` using free Hugging Face models when configured, with deterministic fallbacks.
+  - Added generic time-series forecasting endpoint `/ts/forecast` using free Hugging Face models when configured, with deterministic fallbacks. The deterministic forecaster now fits a simple trend over the full series (rather than just the last two points) so energy and traffic predictions are not flat when the last measurements are constant.
+- For energy forecasts, `/ts/forecast` now passes a compact summary of `energy_features.csv` (sector demand and percentages) alongside the historical series into the Hugging Face model so that predictions can reflect the processed energy context; for traffic forecasts, `/ts/forecast` also includes a compact summary of `traffic_enriched_features.csv` (hourly volumes plus MATATUS/OSM indicators) and `mobility_gis_layers.csv` so the model can reason over enriched traffic context (corridors, mode share, and GIS layers) when producing predictions.
   - Added hotspot preprocessing in the pipeline (`preprocess_hotspots`, `preprocess_hotspots_forecast`) and endpoints `/hotspots/areas` and `/hotspots/areas/forecast`.
   - Added DB-oriented metadata endpoints `/areas`, `/processed_data`, `/simulation_inputs` and a portable schema dump at `src/backend/db/susps_schema_dump.sql`.
   - Extended DB seeding (`src.backend.db.seed_from_processed`) to populate `environment_features`, `air_quality_daily`, and `hotspot_scores` from processed CSVs (`environment_aq_features.csv`, `air_quality_daily.csv`, and hotspot CSVs) so weather/air-quality and hotspot context is available in Postgres for future endpoints and analytics.
@@ -222,6 +223,7 @@ Examples (API responses, truncated):
 
 - Frontend (React + Tailwind under `src/frontend`)
   - Scaffolded a Vite+React+TypeScript+Tailwind SPA with pages for Dashboard, Urban Growth, Energy, and Traffic.
+  - Unified chart export: the `ExportDialog` components build `/export` payloads that include both tabular data and chart series, and PDF exports now render charts as graphics rather than x/y coordinate tables so that exported visuals align closely with the on-screen SVG bar/line/histogram charts.
   - Implemented an area-driven sidebar wired to `/areas` with live search, suggestions, and selection, and lifted `selectedArea` state into `App`.
 - Sidebar now uses a fixed, left-aligned layout with Montserrat typography and two responsive modes:
   - Desktop: wider rail with labels, larger nav icons, and a clear active-state rail (full-width dark highlight with a teal left border).

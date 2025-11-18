@@ -82,7 +82,7 @@ This document summarizes the current state of the SUSPS repository: what’s don
 - Models + pipeline integration
 - Growth: continue to rely on processed and census data (`growth_forecast_city.csv` etc.) for `/growth`; optionally surface per-area growth allocations derived from worldpop/socioeconomic features.
 - Energy: optionally expose sector-level summary via an endpoint (e.g., `/energy/sector-summary`) if added, and pair it with a dedicated chart.
-- Traffic: optionally expose an hourly profile endpoint (e.g., `/traffic/hourly`) if needed for more granular visuals, and consider exposing `traffic_enriched_features.csv` via a dedicated endpoint for richer MATATUS/OSM-aware analytics.
+- Traffic: extend the traffic ingest/preprocess path so that TomTom API snapshots (when `TOMTOM_API_KEY` and `TRAFFIC_PROVIDER=tomtom` are set) produce a robust 24h hourly volume profile that is combined with mobility GIS context under `Mobility_and_Transport` (e.g., `GIS_DATA_2019.zip` and, when economical, an OSM extract such as `kenya_251108.osm.pbf`) and MATATUS/OSM-aware overlays. The intended result is that (1) REAL-mode `/traffic` and `/traffic/summary` use processed artifacts (`traffic_features.csv`, `traffic_enriched_features.csv`, `mobility_gis_layers.csv`) instead of a single-row placeholder so the table and histogram show a full 24-point daily profile, and (2) `/ts/forecast` with `target="traffic"` sends a compact summary of these enriched traffic features and GIS layers to the Hugging Face model alongside the deterministic baseline so forecasts can reflect corridor-level congestion patterns rather than a flat value.
 - DB integration: `src.backend.db.seed_from_processed` now populates `environment_features`, `air_quality_daily`, and `hotspot_scores` from the processed CSVs so DB-backed flows can query weather, air-quality, and hotspot context directly; read-only API endpoints `/environment/features`, `/air_quality/daily`, and `/hotspots/scores` expose these tables (with CSV fallbacks) for environment/AQ/hotspot analytics and UI features.
 - Time-series models: HF-backed time-series models behind `/ts/forecast` are now exercised by the Predict action on the growth, energy, and traffic pages; when HF is not configured, the endpoint falls back to deterministic extrapolation so the Predicted overlays remain available.
 - Add or extend unit tests for these model readers, new endpoints, and seeding logic.
@@ -147,7 +147,8 @@ Milestone M3  Area-driven frontend & hotspot maps (IN PROGRESS)
   - Removed Demo/API toggle from Dash and introduced an `area-select` dropdown gating all charts and advisory.
   - Scaffolded the new React+Tailwind frontend with Dashboard, Urban Growth, Energy, and Traffic pages, and wired area selection via `/areas` plus REAL-mode charts and advisory.
   - Wired REAL vs SIMULATE modes on the React Urban Growth, Energy, and Traffic pages to `/simulate/run`, with basic parameter controls where appropriate.
-  - Implemented an OSM-based hotspot map in the React frontend that overlays `/hotspots/areas` and `/hotspots/areas/forecast`, with dense/problematic areas shown in soft translucent red and improving areas highlighted in soft translucent green when Optimize is active.
+  - Implemented an OSM-based hotspot map in the React frontend that overlays `/hotspots/areas` and `/hotspots/areas/forecast`, with dense/problematic areas shown as red circles and improving areas highlighted in green when Optimize is active. Hotspot lists and optimal-zone units are now ordered alphabetically, and when no area is selected the map card shows the same "No data available." placeholder text as the other cards.
+  - Improved the generic time-series forecaster behind `/ts/forecast` so that growth, energy, and traffic predictions use a full-series trend (rather than just the last two points) when falling back to deterministic mode, eliminating flat predictions like a constant 0.08 profile on the Energy page.
 - Pending:
   - Extend `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary` to accept `area_id` (or equivalent) and filter appropriately.
   - Ensure the React UI passes the selected area into these endpoints and reflects the selected area clearly in the UI.
@@ -158,6 +159,7 @@ Milestone M4  UX polish, simulation & forecasting surfaces
 - Refine the SIMULATE UI in React (existing sliders/inputs on Growth, Energy, and Traffic pages calling `/simulate/run`) and ensure results and advisory copy are easy to interpret.
 - Predict actions already call `/ts/forecast` for growth, energy, and traffic; further UX polish can clarify when advanced forecasts (HF-backed) are available vs deterministic fallbacks.
 - Add help tooltips and page descriptions explaining each page's purpose and how area selection affects data.
+- Align chart exports with on-screen visuals by embedding chart images (captured from the React SVG charts) into PDF exports instead of representing charts as coordinate tables.
 
 Milestone M5 — Reliability, tests, and documentation (FINAL)
 - Add tests for new endpoints (per-area series, hotspots, simulation/time-series) and, where feasible, React frontend integration or E2E tests.

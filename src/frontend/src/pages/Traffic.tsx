@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { AreaBadge } from "../components/AreaBadge";
 import { ModeToggle } from "../components/ModeToggle";
 import { DescriptionSection } from "../components/DescriptionSection";
@@ -18,6 +18,7 @@ import type {
   ExportPayload,
   ExportPage,
   ExportFormat,
+  ChartExportHandle,
 } from "../types";
 import { useAdvisory } from "../hooks/useAdvisory";
 import { useTrafficSeries } from "../hooks/useSeries";
@@ -116,6 +117,7 @@ export function TrafficPage({
   const [predictError, setPredictError] = useState<string | null>(null);
   const [optimalTraffic, setOptimalTraffic] = useState<ChartPoint[]>([]);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const chartRef = useRef<ChartExportHandle | null>(null);
   const [exportTarget, setExportTarget] = useState<TrafficExportTarget | null>(
     null,
   );
@@ -242,7 +244,10 @@ export function TrafficPage({
     setIsExportDialogOpen(true);
   };
 
-  const buildExportPage = (target: TrafficExportTarget): ExportPage => {
+  const buildExportPage = (
+    target: TrafficExportTarget,
+    chartImage?: string | null,
+  ): ExportPage => {
     const areaName = selectedArea?.name ?? "No area selected";
     const description = selectedArea
       ? `Traffic module for ${selectedArea.name} in ${mode} mode.`
@@ -279,6 +284,7 @@ export function TrafficPage({
                 label: s.label,
                 points: s.points,
               })),
+              image_data: chartImage ?? undefined,
             },
           ];
 
@@ -296,7 +302,8 @@ export function TrafficPage({
 
   const handleConfirmExport = async (format: ExportFormat) => {
     if (!exportTarget) return;
-    const page = buildExportPage(exportTarget);
+    const chartImage = chartRef.current ? await chartRef.current.capturePng() : null;
+    const page = buildExportPage(exportTarget, chartImage);
     const payload: ExportPayload = {
       export_format: format,
       pages: [page],
@@ -584,6 +591,7 @@ export function TrafficPage({
 
       <div className="grid gap-4 md:grid-cols-2">
         <Histogram
+          ref={chartRef}
           title="Traffic Volume"
           series={trafficSeries}
           xLabel="Hour of day"
