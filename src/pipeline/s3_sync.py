@@ -47,7 +47,7 @@ def _bucket_and_prefix() -> Tuple[str, str]:
 
 
 def sync_raw_from_s3() -> int:  # pragma: no cover - network
-    """Download objects from AWS_S3_DATA_PREFIX into local data/raw/.
+    """Download objects from AWS_S3_DATA_PREFIX into local data/<CITY>/raw/.
 
     Returns number of objects downloaded.
     """
@@ -56,7 +56,16 @@ def sync_raw_from_s3() -> int:  # pragma: no cover - network
     bucket, prefix = _bucket_and_prefix()
     s3 = _client()
 
+    # Destination root for raw data. Under normal circumstances this is the
+    # city-scoped RAW_DIR (data/<CITY>/raw). On some hosted environments we
+    # defensively guard against misconfiguration that would point RAW_DIR at
+    # the filesystem root ("/") to avoid PermissionError when trying to write
+    # e.g. "/Demographics_and_Population".
     dest_root = _cfg.RAW_DIR
+    if dest_root == Path("/"):
+        # Fallback to a relative, project-local data directory.
+        city = getattr(_cfg, "_CITY", None) or os.getenv("DATA_CITY") or "Nairobi"
+        dest_root = Path("data") / city / "raw"
     _ensure_dir(dest_root)
 
     # Paginate
