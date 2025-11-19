@@ -107,22 +107,21 @@ export const LineChart = forwardRef<ChartExportHandle, LineChartProps>(
     const innerWidth = viewBoxWidth - margin.left - margin.right;
     const innerHeight = viewBoxHeight - margin.top - margin.bottom;
 
-    const buildPathD = (pts: ChartPoint[]): string => {
-      if (!pts.length) return "";
-      return pts
-        .map((p, idx) => {
-          const x =
-            margin.left +
-            (idx / Math.max(points.length - 1, 1)) * innerWidth;
-          const y =
-            margin.top +
-            innerHeight -
-            (p.y / safeMax) * innerHeight;
-          return `${idx === 0 ? "M" : "L"}${x},${y}`;
-        })
-        .join(" ");
-    };
-
+const buildPathD = (pts: ChartPoint[]): string => {
+  if (!pts.length) return "";
+  return pts
+    .map((p, idx) => {
+      const x =
+        margin.left +
+        (idx / Math.max(pts.length - 1, 1)) * innerWidth;
+      const y =
+        margin.top +
+        innerHeight -
+        (p.y / safeMax) * innerHeight;
+      return `${idx === 0 ? "M" : "L"}${x},${y}`;
+    })
+    .join(" ");
+};
     const yTicks = 4;
     const yTickValues = Array.from({ length: yTicks }, (_, i) =>
       (safeMax * i) / (yTicks - 1),

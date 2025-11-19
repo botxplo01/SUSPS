@@ -216,16 +216,20 @@ class TimeSeriesForecaster:
     ) -> List[Dict[str, Any]]:
         """Deterministic forecast when no HF model is used or available.
 
-        For the typical SUSPS use-case where `horizon` matches the length of the
-        input series (e.g. 24 hourly points), this computes a simple linear
-        regression over the entire series and returns an in-sample trend
-        forecast aligned with the original t-values. This avoids degenerate
-        behaviour (such as a flat forecast when the last two points are
-        identical).
+        Behaviour is intentionally simple and fully local:
 
-        When `horizon` exceeds the series length, the function first produces
-        in-sample trend values for the existing points and then extends beyond
-        the last t using the same slope.
+        - Fit a straight-line trend (ordinary least squares) over the entire
+          input series using the provided `t` coordinates.
+        - For each input point, produce a *one-step-ahead* forecast by
+          evaluating the trend at `t + Δt`, where Δt is the average spacing of
+          the series. This keeps the forecast distinct from the baseline even
+          when the original series is nearly linear.
+        - When `horizon` exceeds the series length, continue extrapolating the
+          same trend further into the future.
+
+        This design avoids degenerate behaviour where the forecast simply
+        re-draws the baseline or changes only by +/-1 due to rounding noise,
+        while still remaining lightweight and deterministic.
         """
 
         if not series or horizon <= 0:
@@ -237,12 +241,14 @@ class TimeSeriesForecaster:
             ys = [float(s.get("value", 0.0)) for s in series]
             n = len(xs)
             if n == 1:
+                # With a single point, the best we can do deterministically is a
+                # flat extension of that value into the future.
                 last_t = xs[0]
                 last_v = ys[0]
                 return [
                     {
                         "step": i + 1,
-                        "t": last_t,
+                        "t": last_t + float(i + 1),
                         "value": last_v,
                         "source": "deterministic",
                     }
@@ -254,15 +260,17 @@ class TimeSeriesForecaster:
             denom = sum((x - mean_x) ** 2 for x in xs) or 1.0
             slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / denom
             intercept = mean_y - slope * mean_x
+            # Average step in t (handles 0..23 hours, calendar years, etc.).
+            dt = (xs[-1] - xs[0]) / max(len(xs) - 1, 1)
         except Exception:
-            # Fallback: constant extension of last value
+            # Fallback: constant extension of last value when series is malformed.
             last = series[-1]
             last_t = float(last.get("t", len(series)))
             last_v = float(last.get("value", 0.0))
             return [
                 {
                     "step": i + 1,
-                    "t": last_t + (i + 1),
+                    "t": last_t + float(i + 1),
                     "value": last_v,
                     "source": "deterministic",
                 }
@@ -271,10 +279,10 @@ class TimeSeriesForecaster:
 
         out: List[Dict[str, Any]] = []
 
-        # In-sample trend for existing points
+        # One-step-ahead trend for each existing point.
         base_horizon = min(horizon, len(xs))
         for i in range(base_horizon):
-            t_val = xs[i]
+            t_val = xs[i] + dt
             v_val = intercept + slope * t_val
             out.append(
                 {
@@ -285,14 +293,13 @@ class TimeSeriesForecaster:
                 }
             )
 
-        # If additional horizon is requested, extend beyond the last point
+        # If additional horizon is requested, extend beyond the last point.
         if horizon > base_horizon:
-            last_t = xs[-1]
+            last_t = xs[-1] + dt
             last_v = intercept + slope * last_t
-            dt = (xs[-1] - xs[0]) / max(len(xs) - 1, 1)
             for i in range(base_horizon, horizon):
                 last_t = last_t + dt
-                last_v = last_v + slope * dt
+                last_v = intercept + slope * last_t
                 out.append(
                     {
                         "step": i + 1,

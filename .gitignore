@@ -10,6 +10,7 @@ venv/
 # Envs
 .env aliased local.example
 .env aliased render.example
+render_envs.txt
 
 # In Development
 to_consider.md

@@ -303,9 +303,14 @@ export function EnergyPage({
 
   const handleConfirmExport = async (format: ExportFormat) => {
     if (!exportTarget) return;
-    const chartImage = chartRef.current ? await chartRef.current.capturePng() : null;
-    const page = buildExportPage(exportTarget, chartImage);
-    const payload: ExportPayload = {
+    let chartImage: string | null = null;
+    try {
+      chartImage = chartRef.current ? await chartRef.current.capturePng() : null;
+    } catch (err) {
+      console.error("Failed to capture chart image", err);
+      // Proceed with export without the image
+    }
+    const page = buildExportPage(exportTarget, chartImage);    const payload: ExportPayload = {
       export_format: format,
       pages: [page],
       footer_text: EXPORT_FOOTER_TEXT,
