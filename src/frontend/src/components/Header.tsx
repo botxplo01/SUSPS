@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import type { Area } from "../types";
 import { fetchJson } from "../api";
+import { useAuth } from "../auth/AuthContext";
 
 function titleForPath(pathname: string): string {
   if (pathname.startsWith("/urban-growth")) return "Urban Growth";
@@ -117,6 +118,8 @@ export function Header({
   onExportPage,
 }: HeaderProps) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const { signOut } = useAuth();
   const title = titleForPath(pathname);
   const [scrolled, setScrolled] = useState(false);
   const gradient = gradientForPath(pathname, scrolled);
@@ -236,11 +239,11 @@ export function Header({
             <button
               type="button"
               onClick={onExportPage}
-              className="inline-flex items-center rounded-full bg-blue-900 px-4 py-2 text-xs sm:text-sm font-medium text-white shadow-sm hover:bg-blue-800"
+              className="inline-flex items-center rounded-full bg-blue-900 px-3 py-1.5 text-[11px] sm:px-4 sm:py-2 sm:text-sm font-medium text-white shadow-sm hover:bg-blue-800"
             >
               <svg
                 viewBox="0 0 20 20"
-                className="mr-1.5 h-4 w-4"
+                className="h-4 w-4 sm:mr-1.5"
                 aria-hidden="true"
               >
                 <path
@@ -252,12 +255,16 @@ export function Header({
                   className="fill-current"
                 />
               </svg>
-              Export
+              <span className="hidden sm:inline">Export</span>
             </button>
           )}
           <button
             type="button"
-            className={`inline-flex rounded-full px-4 py-2 text-xs sm:text-sm font-medium shadow-sm border ${buttonClasses}`}
+            className={`inline-flex rounded-full px-3 py-1.5 text-[11px] sm:px-4 sm:py-2 sm:text-sm font-medium shadow-sm border ${buttonClasses}`}
+            onClick={() => {
+              signOut();
+              navigate("/signin", { replace: true });
+            }}
           >
             Sign out
           </button>

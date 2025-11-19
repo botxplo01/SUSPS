@@ -71,8 +71,14 @@ export interface ExportPayload {
   footer_text?: string;
 }
 
+export interface AuthUser {
+  id: number;
+  email: string;
+  full_name?: string | null;
+  token: string;
+}
+
 // Imperative handle exposed by chart components so pages can capture
-// a PNG snapshot of the rendered SVG chart for export.
 export interface ChartExportHandle {
   capturePng: () => Promise<string | null>;
 }

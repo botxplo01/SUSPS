@@ -18,7 +18,6 @@ It does *not* attempt to load every processed artifact into the
 """
 
 from datetime import datetime, time, timezone
-from typing import Iterable
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -368,7 +367,7 @@ def main() -> None:
             n_env = _seed_environment_features(session, area)
             n_aq = _seed_air_quality_daily(session, area)
             n_hs = _seed_hotspot_scores(session, area)
-        except SQLAlchemyError as e:  # pragma: no cover - defensive
+        except SQLAlchemyError:  # pragma: no cover - defensive
             session.rollback()
             raise
 

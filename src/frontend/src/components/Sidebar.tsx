@@ -33,6 +33,8 @@ const navItems = [
 interface SidebarProps {
   selectedArea: Area | null;
   onSelectArea: (area: Area) => void;
+  onResetArea: () => void;
+  onUnloadArea: () => void;
   isMobileOpen: boolean;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -41,6 +43,8 @@ interface SidebarProps {
 export function Sidebar({
   selectedArea,
   onSelectArea,
+  onResetArea,
+  onUnloadArea,
   isMobileOpen,
   isCollapsed,
   onToggleCollapse,
@@ -357,6 +361,34 @@ export function Sidebar({
             </NavLink>
           ))}
         </nav>
+
+        {/* Reset / Unload controls */}
+        <div className="mt-auto px-4 pb-4 pt-2 border-t border-white/10">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (!selectedArea) return;
+                onUnloadArea();
+              }}
+              disabled={!selectedArea}
+              className="flex-1 rounded-full border border-red-400 px-2 py-1 text-xs font-medium text-red-300 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:border-red-900 disabled:text-red-800"
+            >
+              Unload
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!selectedArea) return;
+                onResetArea();
+              }}
+              disabled={!selectedArea}
+              className="flex-1 rounded-full border border-neutral-300 px-2 py-1 text-xs font-medium text-gray-100 hover:bg-white/10 disabled:cursor-not-allowed disabled:border-neutral-700 disabled:text-neutral-500"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
 
         {/* Desktop collapse/expand toggle */}
         <button

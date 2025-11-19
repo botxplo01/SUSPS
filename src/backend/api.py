@@ -4,13 +4,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from starlette.responses import RedirectResponse
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 import os
 from typing import Optional, Any, Dict, Literal, List
 import io
 import csv
 import zipfile
 from datetime import datetime, timezone
+import hashlib
+import secrets
 import requests
 
 # Load .env in local dev so API picks up LOCAL_DATABASE_URL and local paths
@@ -103,6 +105,27 @@ class TimeSeriesForecastPayload(BaseModel):
     use_model: bool = False
 
 
+# --------------------------- auth models ---------------------------
+
+
+class SignupPayload(BaseModel):
+    email: EmailStr
+    full_name: Optional[str] = None
+    password: str = Field(min_length=6, max_length=128)
+
+
+class LoginPayload(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class AuthUser(BaseModel):
+    id: int
+    email: EmailStr
+    full_name: Optional[str] = None
+    token: str
+
+
 # --------------------------- export models ---------------------------
 
 
@@ -176,6 +199,30 @@ def _normalize_db_url(url: str) -> str:
 
 
 _DB_ENABLED = False
+
+
+def _hash_password(password: str) -> str:
+    """Hash a password using a per-user salt and SHA-256.
+
+    This is a lightweight helper for the demo authentication flow. It is not
+    intended for production use but keeps credentials non-plain-text in the
+    database.
+    """
+
+    salt = secrets.token_hex(16)
+    digest = hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+    return f"{salt}${digest}"
+
+
+def _verify_password(password: str, hashed: str) -> bool:
+    try:
+        salt, digest = hashed.split("$", 1)
+    except ValueError:
+        return False
+    new_digest = hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+    return secrets.compare_digest(new_digest, digest)
+
+
 try:
     _want_db = (
         _truthy(os.getenv("USE_DB"))
@@ -199,6 +246,7 @@ try:
             Area,
             ProcessedData,
             SimulationInput,
+            User,
             EnergyConsumption,
             TrafficFlow,
             EnvironmentFeature,
@@ -211,6 +259,95 @@ try:
 except Exception:
     # If imports fail (libs missing, etc.), stay in no-DB mode
     _DB_ENABLED = False
+
+
+@app.post("/auth/signup")
+def auth_signup(payload: SignupPayload):
+    """Create a new user account backed by the users table.
+
+    This endpoint requires the database to be enabled. On success it returns a
+    minimal AuthUser payload that the frontend can store for client-side
+    sessions.
+    """
+
+    if not _DB_ENABLED:
+        return JSONResponse(
+            {
+                "detail": "Authentication requires the database; set USE_DB/USE_LOCAL_DB and DATABASE_URL to enable.",
+            },
+            status_code=503,
+        )
+
+    try:
+        with SessionLocal() as db:  # type: ignore[name-defined]
+            existing = db.query(User).filter(User.email == payload.email).first()
+            if existing is not None:
+                return JSONResponse(
+                    {"detail": "An account with this email already exists."},
+                    status_code=400,
+                )
+
+            now = datetime.now(timezone.utc)
+            user = User(
+                email=str(payload.email),
+                full_name=payload.full_name,
+                hashed_password=_hash_password(payload.password),
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+            token = f"susps-{user.id}-{secrets.token_hex(8)}"
+            return AuthUser(
+                id=int(user.id),  # type: ignore[arg-type]
+                email=user.email,
+                full_name=user.full_name,
+                token=token,
+            )
+    except Exception as exc:  # pragma: no cover - defensive
+        return JSONResponse({"detail": str(exc)}, status_code=500)
+
+
+@app.post("/auth/login")
+def auth_login(payload: LoginPayload):
+    """Authenticate an existing user by email and password.
+
+    Returns a minimal AuthUser payload on success. This demo implementation
+    does not issue real JWTs; the frontend treats the token as a client-side
+    session marker.
+    """
+
+    if not _DB_ENABLED:
+        return JSONResponse(
+            {
+                "detail": "Authentication requires the database; set USE_DB/USE_LOCAL_DB and DATABASE_URL to enable.",
+            },
+            status_code=503,
+        )
+
+    try:
+        with SessionLocal() as db:  # type: ignore[name-defined]
+            user = db.query(User).filter(User.email == payload.email).first()
+            if user is None or not user.hashed_password:
+                return JSONResponse(
+                    {"detail": "Invalid email or password."}, status_code=401
+                )
+            if not _verify_password(payload.password, user.hashed_password):
+                return JSONResponse(
+                    {"detail": "Invalid email or password."}, status_code=401
+                )
+
+            token = f"susps-{user.id}-{secrets.token_hex(8)}"
+            return AuthUser(
+                id=int(user.id),  # type: ignore[arg-type]
+                email=user.email,
+                full_name=user.full_name,
+                token=token,
+            )
+    except Exception as exc:  # pragma: no cover - defensive
+        return JSONResponse({"detail": str(exc)}, status_code=500)
 
 
 @app.get("/growth")

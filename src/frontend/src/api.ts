@@ -1,6 +1,34 @@
 export const API_BASE_URL: string =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
+async function buildFriendlyError(res: Response): Promise<never> {
+  let message: string;
+
+  // Friendly defaults for common auth/form statuses
+  if (res.status === 401) {
+    message = "Wrong password or email/username.";
+  } else if (res.status === 422) {
+    message = "Some of the information you entered is not valid. Please check the fields and try again.";
+  } else {
+    // Try to use backend-provided detail when available
+    try {
+      const data = (await res.json().catch(() => null)) as
+        | { detail?: unknown }
+        | null;
+      const detail = data && (data as { detail?: unknown }).detail;
+      if (typeof detail === "string" && detail.trim().length > 0) {
+        message = detail;
+      } else {
+        message = `Request failed with status ${res.status}`;
+      }
+    } catch {
+      message = `Request failed with status ${res.status}`;
+    }
+  }
+
+  throw new Error(message);
+}
+
 export async function fetchJson<T>(
   path: string,
   params?: Record<string, string | number | undefined>,
@@ -16,7 +44,7 @@ export async function fetchJson<T>(
 
   const res = await fetch(url.toString());
   if (!res.ok) {
-    throw new Error(`Request failed with status ${res.status}`);
+    await buildFriendlyError(res);
   }
   return (await res.json()) as T;
 }
@@ -31,7 +59,7 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body ?? {}),
   });
   if (!res.ok) {
-    throw new Error(`Request failed with status ${res.status}`);
+    await buildFriendlyError(res);
   }
   return (await res.json()) as T;
 }
@@ -46,7 +74,7 @@ export async function postBinary(path: string, body: unknown): Promise<Blob> {
     body: JSON.stringify(body ?? {}),
   });
   if (!res.ok) {
-    throw new Error(`Request failed with status ${res.status}`);
+    await buildFriendlyError(res);
   }
   return await res.blob();
 }
