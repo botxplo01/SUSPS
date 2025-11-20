@@ -51,6 +51,7 @@ Thumbs.db
 logs/
 *.log
 console_export.log
+openapi.json
 
 # Ruff
 .ruff_cache/
