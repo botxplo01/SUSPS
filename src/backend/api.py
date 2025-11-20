@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import hashlib
 import secrets
 import requests
+from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 
 # Load .env in local dev so API picks up LOCAL_DATABASE_URL and local paths
 try:  # pragma: no cover - optional
@@ -191,10 +192,38 @@ def _truthy(val: Optional[str]) -> bool:
 
 
 def _normalize_db_url(url: str) -> str:
+    """Normalise DATABASE_URL for SQLAlchemy/psycopg2.
+
+    - Upgrade "postgres://" URLs to "postgresql+psycopg2://".
+    - Ensure Render-managed Postgres URLs always include "sslmode=require" so
+      connections satisfy the platform's TLS requirement even if the env var is
+      missing that query parameter.
+    """
+
+    # Normalise scheme for SQLAlchemy's psycopg2 dialect
     if url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql+psycopg2://", 1)
-    if url.startswith("postgresql://") and "+psycopg2://" not in url:
-        return url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif url.startswith("postgresql://") and "+psycopg2://" not in url:
+        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+    # For Render-managed Postgres (hosts ending with render.com), append
+    # sslmode=require when it is not already present. This keeps DATABASE_URL
+    # values copy-pasted from the dashboard working even if the parameter is
+    # omitted or stripped.
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+        if host.endswith("render.com"):
+            qs_items = parse_qsl(parsed.query, keep_blank_values=True)
+            has_sslmode = any(k.lower() == "sslmode" for k, _ in qs_items)
+            if not has_sslmode:
+                qs_items.append(("sslmode", "require"))
+                new_query = urlencode(qs_items)
+                url = urlunparse(parsed._replace(query=new_query))
+    except Exception:
+        # If anything goes wrong during parsing, fall back to the best-effort URL
+        return url
+
     return url
 
 
