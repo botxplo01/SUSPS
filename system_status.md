@@ -89,6 +89,7 @@ This document summarizes the current state of the SUSPS repository: what’s don
 - Add or extend unit tests for these model readers, new endpoints, and seeding logic.
 - DB/E2E workflow
   - Optional CI job: spin up Postgres service, apply schema (`src/backend/db/susps_schema_dump.sql` or migrations), seed minimal data, and run DB-backed endpoint tests.
+  - For a clean reset of a dev/Render database, drop and recreate the `public` schema (or manually drop SUSPS tables), then re-run `src/backend/db/susps_schema_dump.sql` and `src.backend.db.seed_from_processed` so the schema and seed data match the current code; the schema file includes an optional commented `DROP TABLE IF EXISTS` block that can be enabled for one-shot resets.
   - Ensure any seed or bootstrap scripts are referenced in docs and remain up to date.
 - Developer experience
   - Keep pre-commit hooks (Ruff, Black, Mypy) enabled and documented.

@@ -46,17 +46,20 @@ from src.models.traffic import (
 
 
 def _ensure_urban_geometry_nullable(session: SessionLocal) -> None:
-    """Relax NOT NULL on urban_areas.geometry when present.
+    """Relax legacy constraints on urban_areas for compatibility.
 
     Some earlier PostGIS-oriented schemas added a non-null geometry column on
-    urban_areas. The current SUSPS schema treats geometry as optional and omits
-    it entirely in susps_schema_dump.sql. To keep seeding portable, we gently
-    drop the NOT NULL constraint when such a column exists so that a simple
-    city-level row (name/area_type only) can be inserted without requiring
-    geometry data.
+    urban_areas and a strict check constraint on area_type. The current SUSPS
+    schema treats geometry as optional and area_type as a free-text descriptor.
+    To keep seeding portable against such databases, we:
+
+    - Drop NOT NULL from geometry when that column exists.
+    - Drop the ck_area_type constraint when present.
     """
 
     try:
+        changed = False
+
         # Check whether a geometry column exists and is marked NOT NULL.
         res = session.execute(
             text(
@@ -64,8 +67,8 @@ def _ensure_urban_geometry_nullable(session: SessionLocal) -> None:
                 SELECT is_nullable
                 FROM information_schema.columns
                 WHERE table_schema = 'public'
-                  AND table_name = 'urban_areas'
-                  AND column_name = 'geometry'
+                    AND table_name = 'urban_areas'
+                    AND column_name = 'geometry'
                 """
             )
         ).scalar()
@@ -76,6 +79,18 @@ def _ensure_urban_geometry_nullable(session: SessionLocal) -> None:
                     "ALTER COLUMN geometry DROP NOT NULL"
                 )
             )
+            changed = True
+
+        # Drop any legacy check constraint that restricts area_type values.
+        session.execute(
+            text(
+                "ALTER TABLE public.urban_areas "
+                "DROP CONSTRAINT IF EXISTS ck_area_type"
+            )
+        )
+        changed = True
+
+        if changed:
             session.commit()
     except Exception:
         # If this helper fails (e.g. lack of privileges or the table does not

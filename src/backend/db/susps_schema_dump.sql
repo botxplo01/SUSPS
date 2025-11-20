@@ -13,6 +13,20 @@ SET row_security = off;
 
 BEGIN;
 
+-- Optional reset block for development:
+-- Uncomment the DROP TABLE statements below if you want this script to fully
+-- reset the SUSPS schema (all data in these tables will be deleted).
+-- DROP TABLE IF EXISTS public.hotspot_scores CASCADE;
+-- DROP TABLE IF EXISTS public.air_quality_daily CASCADE;
+-- DROP TABLE IF EXISTS public.environment_features CASCADE;
+-- DROP TABLE IF EXISTS public.traffic_flow CASCADE;
+-- DROP TABLE IF EXISTS public.energy_consumption CASCADE;
+-- DROP TABLE IF EXISTS public.simulation_inputs CASCADE;
+-- DROP TABLE IF EXISTS public.processed_data CASCADE;
+-- DROP TABLE IF EXISTS public.areas CASCADE;
+-- DROP TABLE IF EXISTS public.urban_areas CASCADE;
+-- DROP TABLE IF EXISTS public.users CASCADE;
+
 -- Users table (future authentication/personalization, no auth logic yet)
 CREATE TABLE IF NOT EXISTS public.users (
     id              BIGSERIAL PRIMARY KEY,

@@ -281,6 +281,8 @@ Render workflow (uses S3 raw + managed Postgres)
 - Subsequent deploys: set `DB_BOOTSTRAP_ON_START=0` for faster starts.
 
 S3 parity tools (keep Render in sync with local `data/<CITY>/raw/`)
+- DB reset (development only):
+  - To completely reinitialise the Render Postgres schema, connect with `psql` and run `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` for the `susps` database, then apply `src/backend/db/susps_schema_dump.sql` and rerun the bootstrap (ingest → preprocess → `seed_from_processed`). Alternatively, uncomment the optional `DROP TABLE IF EXISTS` block at the top of `susps_schema_dump.sql` and run it once against the target database.
 - Check differences vs S3:
   ```bash
   python -m src.pipeline.s3_sync --check
