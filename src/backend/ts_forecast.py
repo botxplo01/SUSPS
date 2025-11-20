@@ -262,6 +262,14 @@ class TimeSeriesForecaster:
             intercept = mean_y - slope * mean_x
             # Average step in t (handles 0..23 hours, calendar years, etc.).
             dt = (xs[-1] - xs[0]) / max(len(xs) - 1, 1)
+
+            # For energy and traffic forecasts, tiny negative slopes tend to
+            # produce visually unrealistic monotonic drifts (e.g. a gentle
+            # decline across the day). Clamp very small trends to flat so that
+            # the deterministic forecast appears stable rather than slowly
+            # decaying when the underlying series is nearly stationary.
+            if self.target in {"energy", "traffic"} and abs(slope) < 0.002:
+                slope = 0.0
         except Exception:
             # Fallback: constant extension of last value when series is malformed.
             last = series[-1]

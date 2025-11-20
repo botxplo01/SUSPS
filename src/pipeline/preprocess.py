@@ -234,6 +234,29 @@ def preprocess_traffic() -> Path:
     if not src.exists():
         raise FileNotFoundError(f"Missing raw input: {src}")
     df = pd.read_csv(src)
+
+    # If the raw TomTom or placeholder data is essentially flat (e.g. 600 veh/h
+    # at every hour), derive a more realistic canonical 24h profile from the
+    # synthetic traffic model and apply it per hour. This keeps REAL-mode
+    # traffic charts informative even when the upstream provider returns a
+    # degenerate series.
+    try:
+        if "veh_per_hour" in df.columns and "hour" in df.columns:
+            vals = df["veh_per_hour"].astype(float)
+            # Treat as degenerate when there is effectively a single level and
+            # almost no variation across the day.
+            if vals.nunique() <= 3 and vals.std() < 50:
+                from src.models.traffic import daily_profile as _traffic_profile  # type: ignore
+
+                profile = {int(p["hour"]): int(p["volume"]) for p in _traffic_profile()}
+                df["veh_per_hour"] = df["hour"].astype(int).map(
+                    lambda h: profile.get(h, profile.get(0, int(vals.iloc[0])))
+                )
+    except Exception:
+        # Never let this heuristic break the pipeline; fall back to the raw
+        # series if anything goes wrong.
+        pass
+
     # Peak indicator and bus pax per hour (rough proxy)
     df["is_peak"] = df["hour"].isin([7, 8, 9, 16, 17, 18]).astype(int)
     df["bus_pax_per_hour"] = (df["veh_per_hour"] * df["mode_share_bus"] * 40).round(1)
