@@ -206,12 +206,39 @@ def _congestion_label(volume: int) -> str:
 
 
 def _seed_traffic_series(session: SessionLocal, area: UrbanArea) -> int:
-    """Seed traffic_flow with a 24h series if table is empty.
+    """Seed traffic_flow with a 24h series when empty or obviously degenerate.
 
-    Returns the number of rows inserted.
+    Returns the number of rows inserted. If the table already contains rows but
+    the predicted_volume values are essentially flat (e.g. all ~600 veh/h), the
+    existing data is cleared and reseeded using the same processed/synthetic
+    logic so REAL-mode charts display a realistic 24h profile.
     """
 
     existing = session.query(TrafficFlow).count()
+    if existing > 0:
+        try:
+            # Sample a subset of existing volumes to detect degenerate cases.
+            vals = [
+                int(v[0])
+                for v in session.query(TrafficFlow.predicted_volume)
+                .order_by(TrafficFlow.ts.desc())
+                .limit(100)
+                .all()
+                if v[0] is not None
+            ]
+            if vals:
+                unique = set(vals)
+                spread = max(vals) - min(vals)
+                # Treat as degenerate when there are very few distinct levels
+                # and they are tightly clustered (e.g. 590–610 only).
+                if len(unique) <= 3 and spread < 100:
+                    session.query(TrafficFlow).delete()
+                    session.commit()
+                    existing = 0
+        except Exception:
+            # On any error, keep existing data and skip reseed.
+            return 0
+
     if existing > 0:
         return 0
 

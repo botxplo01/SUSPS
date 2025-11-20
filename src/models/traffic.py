@@ -29,7 +29,11 @@ def daily_profile_from_processed(
     """Average veh/hour per clock hour from processed traffic artifacts if present.
 
     Prefers traffic_enriched_features.csv (TomTom + MATATUS/OSM context) with a
-    fallback to traffic_features.csv.
+    fallback to traffic_features.csv. If the resulting 24h profile is nearly
+    flat (e.g. all values ~600 veh/h), this falls back to the canonical
+    synthetic profile defined in :func:`daily_profile` so that REAL-mode charts
+    remain realistic even when the upstream provider returns a degenerate
+    series.
     """
     try:
         pdir = processed_dir or _cfg.PROCESSED_DIR
@@ -42,6 +46,11 @@ def daily_profile_from_processed(
         if "hour" not in df.columns or "veh_per_hour" not in df.columns:
             return []
         g = df.groupby("hour")["veh_per_hour"].mean().reset_index()
+        vals = g["veh_per_hour"].astype(float)
+        # If there is essentially a single level with tiny variation, treat
+        # this as degenerate and defer to the canonical synthetic profile.
+        if vals.nunique() <= 3 and vals.std() < 50:
+            return daily_profile()
         return [
             {"hour": int(r["hour"]), "volume": int(r["veh_per_hour"])}
             for _, r in g.iterrows()

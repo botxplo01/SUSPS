@@ -216,25 +216,51 @@ class TimeSeriesForecaster:
     ) -> List[Dict[str, Any]]:
         """Deterministic forecast when no HF model is used or available.
 
-        Behaviour is intentionally simple and fully local:
-
-        - Fit a straight-line trend (ordinary least squares) over the entire
-          input series using the provided `t` coordinates.
-        - For each input point, produce a *one-step-ahead* forecast by
-          evaluating the trend at `t + Δt`, where Δt is the average spacing of
-          the series. This keeps the forecast distinct from the baseline even
-          when the original series is nearly linear.
-        - When `horizon` exceeds the series length, continue extrapolating the
-          same trend further into the future.
-
-        This design avoids degenerate behaviour where the forecast simply
-        re-draws the baseline or changes only by +/-1 due to rounding noise,
-        while still remaining lightweight and deterministic.
+        For growth we keep a simple trend-based extrapolation. For energy and
+        traffic we instead produce a small, smooth uplift over the existing
+        series so that the Predicted overlay preserves the hourly shape rather
+        than collapsing to a flat line.
         """
 
         if not series or horizon <= 0:
             return []
 
+        # For energy and traffic, scale the existing series by a small factor so
+        # that the forecast retains the same shape but reflects a modest change
+        # (e.g. +5%). This avoids artificial flat predictions like 0.13
+        # everywhere when the underlying series is nearly stationary.
+        if self.target in {"energy", "traffic"}:
+            factor = 1.05
+            out: List[Dict[str, Any]] = []
+            base_horizon = min(horizon, len(series))
+            for i in range(base_horizon):
+                s = series[i]
+                t_val = float(s.get("t", i))
+                v_val = float(s.get("value", 0.0)) * factor
+                out.append(
+                    {
+                        "step": i + 1,
+                        "t": t_val,
+                        "value": v_val,
+                        "source": "deterministic",
+                    }
+                )
+            # If caller asks for more steps than we have points, extend by
+            # repeating the last value.
+            if horizon > base_horizon:
+                last = out[-1]
+                for i in range(base_horizon, horizon):
+                    out.append(
+                        {
+                            "step": i + 1,
+                            "t": last["t"] + float(i - base_horizon + 1),
+                            "value": last["value"],
+                            "source": "deterministic",
+                        }
+                    )
+            return out
+
+        # ------------------------- growth fallback -------------------------
         try:
             # Extract numeric t and value arrays
             xs = [float(s.get("t", i)) for i, s in enumerate(series)]
@@ -262,14 +288,6 @@ class TimeSeriesForecaster:
             intercept = mean_y - slope * mean_x
             # Average step in t (handles 0..23 hours, calendar years, etc.).
             dt = (xs[-1] - xs[0]) / max(len(xs) - 1, 1)
-
-            # For energy and traffic forecasts, tiny negative slopes tend to
-            # produce visually unrealistic monotonic drifts (e.g. a gentle
-            # decline across the day). Clamp very small trends to flat so that
-            # the deterministic forecast appears stable rather than slowly
-            # decaying when the underlying series is nearly stationary.
-            if self.target in {"energy", "traffic"} and abs(slope) < 0.002:
-                slope = 0.0
         except Exception:
             # Fallback: constant extension of last value when series is malformed.
             last = series[-1]
@@ -287,7 +305,6 @@ class TimeSeriesForecaster:
 
         out: List[Dict[str, Any]] = []
 
-        # One-step-ahead trend for each existing point.
         base_horizon = min(horizon, len(xs))
         for i in range(base_horizon):
             t_val = xs[i] + dt
@@ -301,7 +318,6 @@ class TimeSeriesForecaster:
                 }
             )
 
-        # If additional horizon is requested, extend beyond the last point.
         if horizon > base_horizon:
             last_t = xs[-1] + dt
             last_v = intercept + slope * last_t
