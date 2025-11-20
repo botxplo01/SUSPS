@@ -81,7 +81,14 @@ def sync_raw_from_s3() -> int:  # pragma: no cover - network
             key: str = obj.get("Key", "")
             if not key or key.endswith("/"):
                 continue
-            rel = key[len(prefix) :] if key.startswith(prefix) else key
+            # Compute a path relative to the configured prefix and normalise it
+            # so it never starts with a leading slash. A leading slash would make
+            # the path absolute (e.g. "/Demographics_and_Population") and cause
+            # writes to the filesystem root on hosted platforms like Render,
+            # triggering PermissionError. We always want objects to land under
+            # dest_root (data/<CITY>/raw/...).
+            rel = key[len(prefix) :] if prefix and key.startswith(prefix) else key
+            rel = rel.lstrip("/")
             dest = dest_root / rel
             _ensure_dir(dest.parent)
             s3.download_file(bucket, key, str(dest))
