@@ -19,6 +19,7 @@ It does *not* attempt to load every processed artifact into the
 
 from datetime import datetime, time, timezone
 
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 import pandas as pd
@@ -42,6 +43,44 @@ from src.models.traffic import (
     daily_profile as traffic_profile_synthetic,
     daily_profile_from_processed as traffic_profile_from_processed,
 )
+
+
+def _ensure_urban_geometry_nullable(session: SessionLocal) -> None:
+    """Relax NOT NULL on urban_areas.geometry when present.
+
+    Some earlier PostGIS-oriented schemas added a non-null geometry column on
+    urban_areas. The current SUSPS schema treats geometry as optional and omits
+    it entirely in susps_schema_dump.sql. To keep seeding portable, we gently
+    drop the NOT NULL constraint when such a column exists so that a simple
+    city-level row (name/area_type only) can be inserted without requiring
+    geometry data.
+    """
+
+    try:
+        # Check whether a geometry column exists and is marked NOT NULL.
+        res = session.execute(
+            text(
+                """
+                SELECT is_nullable
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'urban_areas'
+                  AND column_name = 'geometry'
+                """
+            )
+        ).scalar()
+        if res == "NO":
+            session.execute(
+                text(
+                    "ALTER TABLE public.urban_areas "
+                    "ALTER COLUMN geometry DROP NOT NULL"
+                )
+            )
+            session.commit()
+    except Exception:
+        # If this helper fails (e.g. lack of privileges or the table does not
+        # exist yet), we swallow the error and let the normal seeding flow run.
+        session.rollback()
 
 
 def _get_or_create_urban_area(session: SessionLocal) -> UrbanArea:
@@ -357,6 +396,11 @@ def main() -> None:
 
     with SessionLocal() as session:  # type: ignore[call-arg]
         try:
+            # Ensure legacy urban_areas geometry (when present) is nullable so
+            # that we can create a simple city-level row without requiring
+            # PostGIS data.
+            _ensure_urban_geometry_nullable(session)
+
             # Legacy urban_areas-backed time series
             urban_area = _get_or_create_urban_area(session)
             n_energy = _seed_energy_series(session, urban_area)
