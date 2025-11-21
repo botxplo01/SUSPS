@@ -196,7 +196,7 @@ def _prepare_scope_data(scope: str, bundles: Dict[str, Any]) -> Dict[str, Any]:
                         )
                         out["environment_pollution"] = poll_summary
 
-            # Traffic enriched (TomTom + MATATUS + OSM)
+            # Traffic (TomTom + MATATUS + OSM)
             traf_path = base_dir / "traffic_enriched_features.csv"
             if traf_path.exists():
                 tf = pd.read_csv(traf_path)
@@ -247,7 +247,6 @@ def _prepare_scope_data(scope: str, bundles: Dict[str, Any]) -> Dict[str, Any]:
                                 hs_summary["top_admin_units"] = ", ".join(sorted_top)
                         out["urban_hotspots"] = hs_summary
         except Exception:
-            # Enrichment is optional; advisory should still work without these artifacts.
             pass
 
     return out

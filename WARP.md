@@ -58,10 +58,10 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - Run type check: `mypy -p src -p backend`
 
 - Deployment (Render)
-  - Build: `pip install -r requirements.txt`
-  - Start: `gunicorn src.backend.api:app -k uvicorn.workers.UvicornWorker --timeout 120`
-  - Health check path: `/health` (see `render.yaml`, `Procfile`).
-  - Root path `/` redirects to `/docs`; the React SPA is served by Vite locally (or another static host in production).
+  - Backend service (`susps-web`): built and started via `render.yaml` using `pip install -r requirements.txt` and `./scripts/render_start.sh` (which can optionally bootstrap S3 + pipeline + DB, then runs `gunicorn src.backend.api:app -k uvicorn.workers.UvicornWorker --timeout 120`).
+  - Health check path: `/health` (see `render.yaml`, `scripts/render_start.sh`).
+  - Root path `/` redirects to `/docs` on the backend.
+  - Frontend static site: a separate Render Static Site pointing at `src/frontend` with build command `npm install && npm run build`, publish directory `dist`, and env var `VITE_API_BASE_URL` set to the backend URL (e.g. `https://susps-web.onrender.com`).
 
 ## Quick start (local full stack)
 
@@ -215,7 +215,7 @@ Examples (API responses, truncated):
 
 - Backend
   - Added deterministic SIMULATE engine and `/simulate/run` endpoint over existing growth/energy/traffic outputs.
-  - Added generic time-series forecasting endpoint `/ts/forecast` using free Hugging Face models when configured, with deterministic fallbacks. The deterministic forecaster now fits a simple trend over the full series (rather than just the last two points) so energy and traffic predictions are not flat when the last measurements are constant.
+  - Added generic time-series forecasting endpoint `/ts/forecast` using free Hugging Face models when configured, with deterministic fallbacks. The deterministic forecaster now (a) fits a simple trend over the full series for growth and other yearly series, and (b) for energy and traffic, produces a scaled copy of the baseline 24-hour profile so Predicted overlays keep realistic shapes instead of slowly drifting up or down.
 - For energy forecasts, `/ts/forecast` now passes a compact summary of `energy_features.csv` (sector demand and percentages) alongside the historical series into the Hugging Face model so that predictions can reflect the processed energy context; for traffic forecasts, `/ts/forecast` also includes a compact summary of `traffic_enriched_features.csv` (hourly volumes plus MATATUS/OSM indicators) and `mobility_gis_layers.csv` so the model can reason over enriched traffic context (corridors, mode share, and GIS layers) when producing predictions.
   - Added hotspot preprocessing in the pipeline (`preprocess_hotspots`, `preprocess_hotspots_forecast`) and endpoints `/hotspots/areas` and `/hotspots/areas/forecast`.
   - Added DB-oriented metadata endpoints `/areas`, `/processed_data`, `/simulation_inputs` and a portable schema dump at `src/backend/db/susps_schema_dump.sql`.
@@ -250,7 +250,8 @@ Examples (API responses, truncated):
 
 Overview
 - Unified API: `src/backend/api.py` loads `.env` locally and prefers `LOCAL_DATABASE_URL` when `USE_LOCAL_DB=true`. On Render set `USE_DB=1` and provide `DATABASE_URL` for the managed Postgres.
-- Schema: Alembic migrations (`backend/alembic`) run in both environments. Render runs them on start (see `render.yaml`).
+- Schema: for the final-year project path, initialize each Postgres instance (local or Render) by applying `src/backend/db/susps_schema_dump.sql` once via `psql`; this creates the `users`, `urban_areas`, `energy_consumption`, `traffic_flow`, `environment_features`, `air_quality_daily`, `hotspot_scores`, etc. tables. Legacy Alembic migrations under `backend/` are optional and are not used by the Render deployment.
+- Render DB URLs: set `DATABASE_URL` to the exact connection string from the Render Postgres dashboard (usually starting with `postgres://`); the backend automatically normalizes this to `postgresql+psycopg2://` and appends `sslmode=require` for `*.render.com` hosts.
 - Data: Keep the same city-scoped raw under `data/<CITY>/raw/` (local) and in S3 bucket `susps-raw-data` (Render, region `eu-north-1`). A bootstrap can pull raw from S3, run ingest+preprocess, then load processed into the DB in both environments.
 
 Local workflow (uses `.env` paths + local DB)
