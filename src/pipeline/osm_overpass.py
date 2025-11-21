@@ -1,3 +1,9 @@
+"""Helpers for querying OpenStreetMap via the Overpass API.
+
+Provides utilities to build Overpass QL queries, convert responses to GeoJSON,
+and optionally persist snapshots for reuse by the pipeline.
+"""
+
 from __future__ import annotations
 
 import os
@@ -9,7 +15,6 @@ import requests
 
 
 OVERPASS_URL = os.getenv("OVERPASS_URL", "https://overpass-api.de/api/interpreter")
-
 
 def _overpass_request(query: str, timeout: float = 30.0) -> Dict[str, Any]:
     """Execute an Overpass API query and return the JSON payload.

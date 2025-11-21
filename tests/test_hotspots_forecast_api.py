@@ -1,3 +1,5 @@
+"""API tests for forecasted area hotspots endpoints."""
+
 from __future__ import annotations
 
 from fastapi.testclient import TestClient

@@ -3,15 +3,24 @@ import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";
 import type { LatLngExpression } from "leaflet";
 import { useHotspotAreas, useHotspotForecast } from "../hooks/useHotspots";
 
-const DEFAULT_CENTER: LatLngExpression = [-1.286389, 36.817223]; // Nairobi CBD (spec default)
+// Default centre and zoom reflect the Nairobi CBD as per the SUSPS spec.
+const DEFAULT_CENTER: LatLngExpression = [-1.286389, 36.817223];
 const DEFAULT_ZOOM = 12;
-const MIN_IMPROVEMENT = 0.05; // require at least 5 percentage point improvement
+// Threshold for treating a forecast hotspot score as an "improvement" zone.
+const MIN_IMPROVEMENT = 0.05;
 
 interface MapProps {
   optimize?: boolean;
   zoneId?: string | null;
 }
 
+/**
+ * Leaflet-based hotspot map.
+ *
+ * Renders current and forecast hotspot scores as soft circles around a
+ * city centre, highlighting improving areas in green when Optimize is
+ * active. Uses a simple radial layout until full GeoJSON joins are added.
+ */
 export function HotspotMap({ optimize = false, zoneId }: MapProps) {
   const [yearOffset, setYearOffset] = useState<number>(0);
   const { items: baseAreas, loading: baseLoading, error: baseError } =

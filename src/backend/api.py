@@ -1,3 +1,10 @@
+"""FastAPI application for the Smart Urban Simulation and Prediction System (SUSPS).
+
+Exposes REST endpoints for growth, energy, traffic, environment, hotspots,
+simulation, generic time-series forecasting, exports, advisory, and an
+optional authentication and metadata layer backed by PostgreSQL.
+"""
+
 from fastapi import FastAPI
 from fastapi import Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -61,6 +68,8 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
+    """Simple health check used by local development and Render deployments."""
+
     return JSONResponse({"status": "ok", "service": "susps", "version": "0.1.0"})
 
 
@@ -227,6 +236,8 @@ def _normalize_db_url(url: str) -> str:
     return url
 
 
+# Global feature flag used to toggle database-backed behaviour. Tests may
+# monkeypatch this to False to force file-based fallbacks for specific cases.
 _DB_ENABLED = False
 
 
@@ -381,7 +392,12 @@ def auth_login(payload: LoginPayload):
 
 @app.get("/growth")
 def demo_growth():
-    # Prefer precomputed forecast, then census-based, then processed-scaled, then synthetic
+    """Return urban growth forecast with a deterministic fallback chain.
+
+    Prefers precomputed forecast, then census-based, then processed-derived,
+    and finally a purely synthetic growth pattern.
+    """
+
     try:
         items = forecast_from_processed()
         if items:
@@ -500,9 +516,10 @@ def demo_traffic(area_id: Optional[int] = Query(None)):
     return {"items": items}
 
 
-# Root route: redirect to interactive API docs
 @app.get("/")
 def root_redirect():
+    """Redirect the root path to FastAPI's interactive API documentation."""
+
     return RedirectResponse(url="/docs")
 
 
@@ -640,7 +657,7 @@ def traffic_summary(area_id: Optional[int] = Query(None)):
 
 
 @app.get("/environment/features")
-def environment_features(area_id: Optional[int] = Query(None)):
+def environment_features(area_id: Optional[int] = Query(None)) -> Dict[str, Any]:
     """Return monthly environment + air-quality features.
 
     When the database is enabled, this reads from the environment_features
@@ -729,7 +746,7 @@ def environment_features(area_id: Optional[int] = Query(None)):
 def air_quality_daily(
     area_id: Optional[int] = Query(None),
     limit: int = Query(365, ge=1, le=3650),
-):
+) -> Dict[str, Any]:
     """Return daily air-quality aggregates (pm25/pm10/o3).
 
     When the database is enabled, this reads from the air_quality_daily table;
@@ -802,7 +819,7 @@ def hotspots_areas(
             "case-insensitively, with exact-match preferred over partial."
         ),
     ),
-):
+) -> Dict[str, Any]:
     """Return area-level hotspot scores from processed artifacts.
 
     Reads data/<CITY>/processed/hotspots_areas.csv if present. This file is
@@ -858,7 +875,7 @@ def hotspots_areas_forecast(
             "case-insensitively, with exact-match preferred over partial."
         ),
     ),
-):
+) -> Dict[str, Any]:
     """Return multi-year area-level hotspot forecasts.
 
     Reads data/<CITY>/processed/hotspots_areas_forecast.csv if present and
@@ -912,7 +929,7 @@ def hotspots_scores(
             "case-insensitively, with exact-match preferred over partial."
         ),
     ),
-):
+) -> Dict[str, Any]:
     """Return hotspot scores from DB or processed CSVs.
 
     When the database is enabled, this reads from the hotspot_scores table.

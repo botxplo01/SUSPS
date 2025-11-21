@@ -12,6 +12,12 @@ import { SignUpPage } from "./pages/SignUp";
 import { RequireAuth } from "./auth/RequireAuth";
 import type { Area } from "./types";
 
+/**
+ * Root application shell.
+ *
+ * Wires routing, authentication guard, and the shared selected-area and
+ * export-registration state used by the dashboard and domain pages.
+ */
 export default function App() {
   const [selectedArea, setSelectedArea] = useState<Area | null>(null);
   const [areaResetCounter, setAreaResetCounter] = useState(0);

@@ -1,3 +1,5 @@
+"""API tests for /ts/forecast deterministic fallback behavior."""
+
 from __future__ import annotations
 
 from fastapi.testclient import TestClient

@@ -1,6 +1,12 @@
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import type { ChartPoint, ChartSeries, ChartExportHandle } from "../types";
 
+/**
+ * SVG-based bar chart that supports multiple overlaid series.
+ *
+ * Exposes an imperative handle so pages can capture the chart as a PNG for
+ * inclusion in PDF exports.
+ */
 interface BarChartProps {
   title?: string;
   data?: ChartPoint[];

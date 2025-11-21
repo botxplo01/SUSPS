@@ -34,6 +34,7 @@ type EnergyExportTarget =
   | { kind: "chart"; id: "consumption" }
   | { kind: "table"; id: "demand" };
 
+/** Footer text used for Energy PDF/CSV exports. */
 const EXPORT_FOOTER_TEXT =
   "Smart Urban Simulation and Prediction System (SUSPS) — © 2025 Developed by David Lameck.";
 
@@ -99,6 +100,13 @@ function computeEnergyOptimal(real: ChartPoint[], sim: ChartPoint[]): ChartPoint
   return out;
 }
 
+/**
+ * Energy module page.
+ *
+ * Shows baseline hourly demand, allows HF-backed/deterministic forecasts
+ * in REAL mode, and SIMULATE scenarios overlaid with an optional Optimize
+ * curve in SIMULATE mode.
+ */
 export function EnergyPage({
   selectedArea,
   onRegisterExporter,

@@ -8,6 +8,9 @@ interface SeriesResult {
   error: string | null;
 }
 
+/**
+ * Load growth series for the selected area (REAL mode baseline).
+ */
 export function useGrowthSeries(areaId: number | null): SeriesResult {
   const [points, setPoints] = useState<ChartPoint[]>([]);
   const [loading, setLoading] = useState(false);
@@ -53,6 +56,10 @@ export function useGrowthSeries(areaId: number | null): SeriesResult {
   return { points, loading, error };
 }
 
+/**
+ * Load energy series for the selected area, handling both DB-backed
+ * and processed-file shapes returned by the API.
+ */
 export function useEnergySeries(areaId: number | null): SeriesResult {
   const [points, setPoints] = useState<ChartPoint[]>([]);
   const [loading, setLoading] = useState(false);
@@ -108,6 +115,10 @@ export function useEnergySeries(areaId: number | null): SeriesResult {
   return { points, loading, error };
 }
 
+/**
+ * Load traffic series for the selected area, normalising DB and
+ * processed-file response formats into a single ChartPoint array.
+ */
 export function useTrafficSeries(areaId: number | null): SeriesResult {
   const [points, setPoints] = useState<ChartPoint[]>([]);
   const [loading, setLoading] = useState(false);

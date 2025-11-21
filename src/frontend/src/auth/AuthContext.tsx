@@ -11,6 +11,11 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const STORAGE_KEY = "susps_auth_user";
 
+/**
+ * Provide authentication state (minimal user object + helpers) to the app.
+ *
+ * Persists the current user in localStorage so sessions survive page reloads.
+ */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
 
@@ -51,6 +56,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+/**
+ * Access the current AuthContext value.
+ *
+ * Must be called from a descendant of <AuthProvider>.
+ */
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) {

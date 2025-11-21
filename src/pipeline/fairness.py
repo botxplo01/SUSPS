@@ -1,10 +1,15 @@
+"""Minimal fairness and coverage audits for processed tabular data.
+
+Provides helpers to compute a demographic parity gap, geographic coverage, and
+a small CSV report used by the pipeline end-to-end test.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
 import pandas as pd
 
 from . import config
-
 
 def demographic_parity_gap(df: pd.DataFrame, group: str, score: str) -> float:
     """Absolute difference between group mean scores for a binary group.

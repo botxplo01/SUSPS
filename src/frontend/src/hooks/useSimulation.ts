@@ -21,6 +21,13 @@ interface UseSimulationOptions {
   runKey?: number;
 }
 
+/**
+ * Run a SIMULATE scenario for growth/energy/traffic and expose the
+ * resulting series as ChartPoint data.
+ *
+ * The hook is edge-triggered by `runKey` so callers can control when a
+ * new simulation should be executed.
+ */
 export function useSimulationSeries(
   module: SimulationModule,
   enabled: boolean,

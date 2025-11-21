@@ -1,3 +1,5 @@
+"""API tests for /simulate/run covering all-modules and growth-only modes."""
+
 from __future__ import annotations
 
 from fastapi.testclient import TestClient

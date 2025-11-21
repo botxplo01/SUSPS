@@ -1,6 +1,12 @@
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import type { ChartPoint, ChartSeries, ChartExportHandle } from "../types";
 
+/**
+ * SVG-based line chart used for continuous series such as energy demand.
+ *
+ * Supports multiple series and allows exporting the rendered SVG as a PNG
+ * via an imperative handle.
+ */
 interface LineChartProps {
   title?: string;
   data?: ChartPoint[];

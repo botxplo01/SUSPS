@@ -1,3 +1,9 @@
+"""Population growth helpers for REAL and SIMULATE modes.
+
+These functions read processed census and worldpop features when available and
+fall back to deterministic compounded projections otherwise.
+"""
+
 from __future__ import annotations
 
 from typing import List, Dict
@@ -5,7 +11,6 @@ from pathlib import Path
 import pandas as pd
 
 from src.pipeline import config as _cfg
-
 
 def forecast_from_processed(
     processed_dir: Path | None = None,
@@ -95,7 +100,7 @@ def predict_from_processed(
 ) -> List[Dict[str, int]]:
     """Placeholder: if processed data exists, derive a base population proxy.
 
-    Uses `data/processed/worldpop_features.csv` pop_share sum as a lightweight
+    Uses `data/<CITY>/processed/worldpop_features.csv` pop_share sum as a lightweight
     proxy for base scaling; falls back to predict_growth otherwise.
     """
     try:

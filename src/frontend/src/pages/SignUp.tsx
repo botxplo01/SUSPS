@@ -6,6 +6,9 @@ import { postJson } from "../api";
 import type { AuthUser } from "../types";
 import { useAuth } from "../auth/AuthContext";
 
+/**
+ * Account creation page wired to the /auth/signup endpoint.
+ */
 export function SignUpPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");

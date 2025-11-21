@@ -34,6 +34,7 @@ type TrafficExportTarget =
   | { kind: "chart"; id: "volume" }
   | { kind: "table"; id: "volume" };
 
+/** Footer text used for Traffic PDF/CSV exports. */
 const EXPORT_FOOTER_TEXT =
   "Smart Urban Simulation and Prediction System (SUSPS) — © 2025 Developed by David Lameck.";
 
@@ -99,6 +100,13 @@ function computeTrafficOptimal(real: ChartPoint[], sim: ChartPoint[]): ChartPoin
   return out;
 }
 
+/**
+ * Traffic module page.
+ *
+ * Displays baseline hourly traffic volumes plus SIMULATE scenarios and an
+ * Optimize overlay, alongside a hotspot map and AI advisory for the
+ * selected area.
+ */
 export function TrafficPage({
   selectedArea,
   onRegisterExporter,

@@ -1,3 +1,10 @@
+"""Thin Hugging Face client wrapper used by the SUSPS backend.
+
+Handles token loading, model selection, and robust fallbacks so that
+advisory and time-series helpers can request text generations without
+embedding Hugging Face API details.
+"""
+
 import os
 import sys
 from typing import Optional

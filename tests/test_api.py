@@ -1,3 +1,5 @@
+"""FastAPI app smoke tests for health and advisory endpoints."""
+
 import pytest
 from httpx import AsyncClient, ASGITransport
 from src.backend.api import app

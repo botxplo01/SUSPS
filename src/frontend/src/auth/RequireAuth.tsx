@@ -5,6 +5,12 @@ interface RequireAuthProps {
   children: JSX.Element;
 }
 
+/**
+ * Guard that redirects unauthenticated users to /signin.
+ *
+ * Preserves the original location in router state so users can be
+ * redirected back after signing in.
+ */
 export function RequireAuth({ children }: RequireAuthProps) {
   const { user } = useAuth();
   const location = useLocation();

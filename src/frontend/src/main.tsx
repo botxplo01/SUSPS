@@ -6,6 +6,7 @@ import { AuthProvider } from "./auth/AuthContext";
 import "./index.css";
 import "leaflet/dist/leaflet.css";
 
+// React entrypoint: wraps the App in router + auth providers.
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <BrowserRouter>

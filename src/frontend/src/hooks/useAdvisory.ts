@@ -21,6 +21,12 @@ interface UseAdvisoryResult {
   meta: Omit<AdvisoryResponse, "insights"> | null;
 }
 
+/**
+ * Fetch AI advisory text for a given scope/zone/scenario combination.
+ *
+ * Automatically clears state when no zone is selected and exposes both
+ * the raw advisory markdown and metadata (model, cache status, etc.).
+ */
 export function useAdvisory(
   scope: AdvisoryScope,
   zoneId: string | null,

@@ -1,3 +1,9 @@
+"""Small synthetic data generators used to keep the pipeline runnable offline.
+
+Currently provides a simple demographics generator plus a helper to persist the
+result under data/<CITY>/processed/.
+"""
+
 from __future__ import annotations
 
 import numpy as np
@@ -5,7 +11,6 @@ import pandas as pd
 from pathlib import Path
 
 from . import config
-
 
 def generate_demographics(
     n: int = 1000, seed: int = config.Defaults.seed

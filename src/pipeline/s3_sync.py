@@ -1,3 +1,9 @@
+"""Utility functions for syncing data/<CITY>/raw/ with an S3 bucket.
+
+These helpers are optional and guarded by environment flags so local runs and
+tests remain fully offline and deterministic.
+"""
+
 from __future__ import annotations
 
 import os

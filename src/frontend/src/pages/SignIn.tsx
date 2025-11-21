@@ -6,6 +6,9 @@ import { postJson } from "../api";
 import type { AuthUser } from "../types";
 import { useAuth } from "../auth/AuthContext";
 
+/**
+ * Email/password sign-in page backed by the FastAPI auth endpoints.
+ */
 export function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

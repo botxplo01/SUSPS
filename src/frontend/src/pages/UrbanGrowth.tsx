@@ -34,6 +34,7 @@ type GrowthExportTarget =
   | { kind: "chart"; id: "population" }
   | { kind: "table"; id: "population" };
 
+/** Footer text used for Urban Growth PDF/CSV exports. */
 const EXPORT_FOOTER_TEXT =
   "Smart Urban Simulation and Prediction System (SUSPS) — © 2025 Developed by David Lameck.";
 
@@ -103,6 +104,13 @@ function computeOptimalSeries(real: ChartPoint[], sim: ChartPoint[]): ChartPoint
   return out;
 }
 
+/**
+ * Urban Growth module page.
+ *
+ * Visualises baseline population series and supports SIMULATE scenarios
+ * (growth-rate changes and shocks) plus an Optimize overlay derived from
+ * REAL and SIMULATE outputs.
+ */
 export function UrbanGrowthPage({
   selectedArea,
   onRegisterExporter,

@@ -1,3 +1,5 @@
+"""API tests for environment and air-quality feature endpoints."""
+
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
@@ -13,6 +15,8 @@ def test_environment_features_empty_when_missing_file(tmp_path, monkeypatch):
     """When no environment_aq_features.csv is present, return an empty list."""
 
     monkeypatch.setattr(_cfg, "PROCESSED_DIR", tmp_path)
+    # Force API into file-based mode for this test, even if a DB is configured.
+    monkeypatch.setattr("src.backend.api._DB_ENABLED", False, raising=False)
     resp = client.get("/environment/features")
     assert resp.status_code == 200
     data = resp.json()
@@ -23,6 +27,7 @@ def test_environment_features_returns_items(tmp_path, monkeypatch):
     """environment/features should surface rows from environment_aq_features.csv."""
 
     monkeypatch.setattr(_cfg, "PROCESSED_DIR", tmp_path)
+    monkeypatch.setattr("src.backend.api._DB_ENABLED", False, raising=False)
     csv_path = tmp_path / "environment_aq_features.csv"
     csv_path.write_text(
         "month,temp_c,rain_mm,cooling_deg,wet_month,pm25,pm10,o3,pollution_index\n"
@@ -46,6 +51,7 @@ def test_air_quality_daily_empty_when_missing_file(tmp_path, monkeypatch):
     """When no air_quality_daily.csv is present, return an empty list."""
 
     monkeypatch.setattr(_cfg, "PROCESSED_DIR", tmp_path)
+    monkeypatch.setattr("src.backend.api._DB_ENABLED", False, raising=False)
     resp = client.get("/air_quality/daily")
     assert resp.status_code == 200
     data = resp.json()
@@ -56,6 +62,7 @@ def test_air_quality_daily_returns_items(tmp_path, monkeypatch):
     """air_quality/daily should surface rows from air_quality_daily.csv."""
 
     monkeypatch.setattr(_cfg, "PROCESSED_DIR", tmp_path)
+    monkeypatch.setattr("src.backend.api._DB_ENABLED", False, raising=False)
     csv_path = tmp_path / "air_quality_daily.csv"
     csv_path.write_text(
         "date,pm25,pm10,o3\n"
@@ -79,6 +86,7 @@ def test_hotspots_scores_empty_when_missing_files(tmp_path, monkeypatch):
     """When no hotspot CSVs are present, /hotspots/scores returns an empty list."""
 
     monkeypatch.setattr(_cfg, "PROCESSED_DIR", tmp_path)
+    monkeypatch.setattr("src.backend.api._DB_ENABLED", False, raising=False)
     resp = client.get("/hotspots/scores")
     assert resp.status_code == 200
     data = resp.json()
@@ -89,6 +97,7 @@ def test_hotspots_scores_merges_baseline_and_forecast(tmp_path, monkeypatch):
     """/hotspots/scores should merge baseline and forecast hotspot CSVs."""
 
     monkeypatch.setattr(_cfg, "PROCESSED_DIR", tmp_path)
+    monkeypatch.setattr("src.backend.api._DB_ENABLED", False, raising=False)
 
     base = tmp_path / "hotspots_areas.csv"
     base.write_text(

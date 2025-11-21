@@ -1,3 +1,4 @@
+/** Shared frontend types for areas, charts, exports, and auth. */
 export type Mode = "REAL" | "SIMULATE";
 
 export interface Area {

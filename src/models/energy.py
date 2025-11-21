@@ -1,3 +1,9 @@
+"""Energy model helpers backing the /energy endpoints.
+
+Functions here derive a 24-hour demand profile and simple sector summary from
+processed pipeline artifacts, with synthetic fallbacks when files are missing.
+"""
+
 from __future__ import annotations
 
 from typing import List, Dict
@@ -5,7 +11,6 @@ from pathlib import Path
 import pandas as pd
 
 from src.pipeline import config as _cfg
-
 
 def daily_profile() -> List[Dict[str, float]]:
     """Return a synthetic 24h energy demand curve (MWh)."""

@@ -1,3 +1,11 @@
+"""Deterministic simulation helpers used by the SIMULATE API endpoints.
+
+These functions adjust baseline growth, energy, and traffic series using
+simple parameterised rules (scaling, peak shifting, flattening, shocks)
+so that SIMULATE mode remains transparent, reproducible, and free of
+external model dependencies.
+"""
+
 from __future__ import annotations
 
 from typing import Any, Dict, List

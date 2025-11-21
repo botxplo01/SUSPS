@@ -8,6 +8,9 @@ interface HotspotResult<T> {
   error: string | null;
 }
 
+/**
+ * Load baseline hotspot scores from /hotspots/areas with optional zone filter.
+ */
 export function useHotspotAreas(
   zoneId?: string | null,
 ): HotspotResult<HotspotArea> {
@@ -60,6 +63,9 @@ export function useHotspotAreas(
   return { items, loading, error };
 }
 
+/**
+ * Load forecast hotspot scores from /hotspots/areas/forecast.
+ */
 export function useHotspotForecast(
   year?: number,
   zoneId?: string | null,

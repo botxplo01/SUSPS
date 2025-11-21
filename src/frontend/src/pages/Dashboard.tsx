@@ -32,9 +32,17 @@ type DashboardExportTarget =
   | { kind: "page" }
   | { kind: "chart"; id: "growth" | "energy" | "traffic" };
 
+/** Footer text used for Dashboard PDF/CSV exports. */
 const EXPORT_FOOTER_TEXT =
   "Smart Urban Simulation and Prediction System (SUSPS) — © 2025 Developed by David Lameck.";
 
+/**
+ * Area-driven dashboard page.
+ *
+ * Shows baseline growth, energy, and traffic summaries plus a hotspot map
+ * and AI advisory for the selected area. Also coordinates holistic and
+ * per-chart export flows.
+ */
 export function DashboardPage({
   selectedArea,
   onRegisterExporter,

@@ -1,3 +1,9 @@
+"""Central configuration for the SUSPS data pipeline.
+
+Defines project- and city-scoped data directories, domain-specific raw folders,
+default parameters, external dataset paths, and provider API keys/toggles.
+"""
+
 from __future__ import annotations
 
 import os

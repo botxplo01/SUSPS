@@ -1,6 +1,11 @@
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import type { ChartPoint, ChartSeries, ChartExportHandle } from "../types";
 
+/**
+ * SVG-based histogram for traffic volumes and other bucketed data.
+ *
+ * Uses the same export handle pattern as the BarChart/LineChart components.
+ */
 interface HistogramProps {
   title?: string;
   data?: ChartPoint[];

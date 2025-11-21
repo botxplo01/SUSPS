@@ -1,6 +1,17 @@
+/**
+ * Base URL for all backend API calls.
+ *
+ * Defaults to the local FastAPI dev server when VITE_API_BASE_URL is not set.
+ */
 export const API_BASE_URL: string =
   import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
+/**
+ * Turn a non-OK fetch response into a user-friendly Error.
+ *
+ * Uses backend-provided `detail` when present and falls back to a generic
+ * status-based message otherwise.
+ */
 async function buildFriendlyError(res: Response): Promise<never> {
   let message: string;
 
@@ -29,6 +40,9 @@ async function buildFriendlyError(res: Response): Promise<never> {
   throw new Error(message);
 }
 
+/**
+ * Perform a JSON GET request against the backend with optional query params.
+ */
 export async function fetchJson<T>(
   path: string,
   params?: Record<string, string | number | undefined>,
@@ -49,6 +63,9 @@ export async function fetchJson<T>(
   return (await res.json()) as T;
 }
 
+/**
+ * Perform a JSON POST request and parse a JSON response body.
+ */
 export async function postJson<T>(path: string, body: unknown): Promise<T> {
   const url = new URL(path, API_BASE_URL);
   const res = await fetch(url.toString(), {
@@ -64,6 +81,9 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
   return (await res.json()) as T;
 }
 
+/**
+ * POST JSON and return the raw binary response body (e.g. PDF/ZIP exports).
+ */
 export async function postBinary(path: string, body: unknown): Promise<Blob> {
   const url = new URL(path, API_BASE_URL);
   const res = await fetch(url.toString(), {
@@ -79,6 +99,9 @@ export async function postBinary(path: string, body: unknown): Promise<Blob> {
   return await res.blob();
 }
 
+/**
+ * Trigger a browser download for an in-memory Blob.
+ */
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement("a");

@@ -5,13 +5,17 @@ interface FormattedInsightsProps {
 // Render advisory/insights text in a normal, non-markdown style while
 // preserving key headings as bold.
 export function FormattedInsights({ text }: FormattedInsightsProps) {
+
   // Normalise newlines and gently split markdown-style headings and numbered
   // items so that the layout is closer to the PDF/export formatting.
   let normalised = text.replace(/\r\n/g, "\n");
+
   // Ensure markdown headings like "### Energy Profile" start on their own line.
   normalised = normalised.replace(/\s*###\s+/g, "\n### ");
+
   // Ensure a leading "**Insights**" marker is on its own line so we can drop it.
   normalised = normalised.replace(/\s*\*\*\s*Insights\s*\*\*/gi, "\nInsights\n");
+  
   // Insert line breaks before simple numbered items like "1. text" when they
   // appear inline with other content.
   normalised = normalised.replace(/(\S)\s+(\d+\.\s)/g, "$1\n$2");
@@ -57,12 +61,12 @@ export function FormattedInsights({ text }: FormattedInsightsProps) {
 
     const lowerRaw = line.toLowerCase();
 
-    // Explicit dev instructions like "(remove this)" should not render at all.
+    // Skip lines marked for removal.
     if (/\(remove this\)/i.test(lowerRaw)) {
       continue;
     }
 
-    // Remove inline dev markers like "(bold)" but keep the actual text.
+    // Drop markdown bold markers.
     line = line.replace(/\(bold\)/gi, "").trim();
     if (!line) continue;
 

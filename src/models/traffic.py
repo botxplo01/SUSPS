@@ -1,3 +1,9 @@
+"""Traffic volume helpers used by the /traffic endpoints.
+
+They expose 24-hour profiles derived from processed traffic artifacts, with a
+canonical synthetic curve used when upstream providers return degenerate data.
+"""
+
 from __future__ import annotations
 
 from typing import List, Dict
@@ -5,7 +11,6 @@ from pathlib import Path
 import pandas as pd
 
 from src.pipeline import config as _cfg
-
 
 def daily_profile() -> List[Dict[str, int]]:
     """Return a synthetic 24h traffic volume curve."""

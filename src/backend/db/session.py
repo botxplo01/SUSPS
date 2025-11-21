@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+# Database engine and session factory configuration for the SUSPS backend.
+#
+# This module selects the effective DATABASE_URL based on environment
+# variables (local vs Render) and exposes a shared SQLAlchemy engine and
+# SessionLocal factory used across API handlers and seeding scripts.
+
 import os
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 from sqlalchemy import create_engine

@@ -1,3 +1,10 @@
+"""Preprocessing steps that turn raw ingested files into canonical features.
+
+Functions here read data/<CITY>/raw/ artifacts, derive lightweight features for
+growth, energy, traffic, environment, air quality, hotspots, and rasters, and
+write them under data/<CITY>/processed/.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
