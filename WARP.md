@@ -2,6 +2,8 @@
 
 This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
+It focuses on day-to-day development workflows: how to set up the environment, run the backend and frontend, work with the data pipeline, and deploy to Render. For a dated snapshot of project progress and roadmap, see `system_status.md`. For thesis-style system documentation, see `docs/documentation.md`.
+
 ## Rules (project)
 - Keep GitHub tracking issues in sync with roadmap milestones and tasks. Use `gh issue` to view/update when appropriate.
 - After modifying code, always run formatting and lint checks locally:
@@ -10,6 +12,8 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 - Run unit tests before pushing when changes affect logic.
 - Never commit secrets. Use environment variables locally and in Render.
 - Only use high-quality free, free-tier, freemium, and open-source resources/tools. Avoid paid tools or those requiring credit cards.
+- Keep comments concise and implementation-focused; avoid AI/meta commentary and other non-essential remarks.
+- Treat `documentation.md` as the single source of thesis-style system documentation; when major features, architecture, or data sources change, update this file alongside `system_status.md`.
 
 ## Common commands
 
@@ -92,13 +96,13 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - frontend/: Vite + React + Tailwind SPA (`src/frontend`) providing the SUSPS UI.
   - pipeline/: ingest, preprocess, synthetic, and S3 sync utilities
   - models/: deterministic helpers and lightweight stubs (growth/energy/traffic simulation, time-series, etc.) used by the backend; the UI now relies only on API endpoints rather than local demo stubs.
-- backend/: removed (Docker and container-only backend are not used for the final-year project)
+- backend/: optional DB-focused Docker/PostGIS stack used for experiments and DB-backed E2E tests; not required for the final-year Render deployment path.
 - tests/: unit and e2e tests
 - data/: city-scoped outputs under `data/<CITY>/{raw,processed}` (default CITY=Nairobi)
 
 Notes
-- The Docker backend is maintained for DB-enabled E2E tests but reuses the same FastAPI API; it does not provide a separate UI.
-- Prefer src/backend/api.py for local and Render deployments.
+- The `backend/` Docker stack is optional and used for DB-enabled experiments/E2E tests; it reuses the same FastAPI API and does not provide a separate UI.
+- Prefer `src/backend/api.py` for local and Render deployments.
 
 ### Feature: AI Advisory Engine (Hugging Face)
 - Purpose: Turns SUSPS predictions (growth, energy, traffic) into actionable, model-generated insights displayed in the UI.
@@ -211,38 +215,9 @@ Examples (API responses, truncated):
   - Local: canonical datasets live under `data/<CITY>/{raw,processed}` and feed the local PostgreSQL instance when `USE_LOCAL_DB=true` (or equivalent env).
   - Render: uses managed PostgreSQL plus AWS S3 bucket `susps-raw-data` (region `eu-north-1`) to hold the same raw datasets.
   - Goal: keep local `data/<CITY>/raw/` and S3 `susps-raw-data/<CITY>/raw/` in sync so the frontend behaves identically locally and on Render.
-## Latest changes (2025-11-17)
+## Status and roadmap
 
-- Backend
-  - Added deterministic SIMULATE engine and `/simulate/run` endpoint over existing growth/energy/traffic outputs.
-  - Added generic time-series forecasting endpoint `/ts/forecast` using free Hugging Face models when configured, with deterministic fallbacks. The deterministic forecaster now (a) fits a simple trend over the full series for growth and other yearly series, and (b) for energy and traffic, produces a scaled copy of the baseline 24-hour profile so Predicted overlays keep realistic shapes instead of slowly drifting up or down.
-- For energy forecasts, `/ts/forecast` now passes a compact summary of `energy_features.csv` (sector demand and percentages) alongside the historical series into the Hugging Face model so that predictions can reflect the processed energy context; for traffic forecasts, `/ts/forecast` also includes a compact summary of `traffic_enriched_features.csv` (hourly volumes plus MATATUS/OSM indicators) and `mobility_gis_layers.csv` so the model can reason over enriched traffic context (corridors, mode share, and GIS layers) when producing predictions.
-  - Added hotspot preprocessing in the pipeline (`preprocess_hotspots`, `preprocess_hotspots_forecast`) and endpoints `/hotspots/areas` and `/hotspots/areas/forecast`.
-  - Added DB-oriented metadata endpoints `/areas`, `/processed_data`, `/simulation_inputs` and a portable schema dump at `src/backend/db/susps_schema_dump.sql`.
-  - Extended DB seeding (`src.backend.db.seed_from_processed`) to populate `environment_features`, `air_quality_daily`, and `hotspot_scores` from processed CSVs (`environment_aq_features.csv`, `air_quality_daily.csv`, and hotspot CSVs) so weather/air-quality and hotspot context is available in Postgres for future endpoints and analytics.
-  - Removed the legacy `/config` endpoint and `DEFAULT_DATA_SOURCE` toggle; the backend now always uses processed/DB data with deterministic fallbacks (no Demo/API switch).
-
-- Frontend (React + Tailwind under `src/frontend`)
-  - Scaffolded a Vite+React+TypeScript+Tailwind SPA with pages for Dashboard, Urban Growth, Energy, and Traffic.
-  - Added a simple authentication flow backed by the `users` table in `src/backend/db/susps_schema_dump.sql`: backend endpoints `/auth/signup` and `/auth/login` hash passwords and return a minimal auth payload; the React app uses an `AuthProvider` (client-side context + `localStorage`) and a `RequireAuth` wrapper so that core routes (`/dashboard`, `/urban-growth`, `/energy`, `/traffic`) are protected and unauthenticated users are redirected to the sign-in page.
-  - Implemented dedicated `/signin` and `/signup` pages with a responsive layout: left-side form, right-side frosted-glass info container (desktop/tablet), and a mobile frosted-glass gradient banner using the same black → gray → emerald → green palette. Both pages use floating-label inputs (labels sit on the input line when empty and float above when focused/filled) and cross-links (Sign in: “Don't have an account? Sign up here”; Sign up: “Already have an account? Sign in here”). The info container carries the SUSPS title, “Developed by David Lameck”, and a brief overview.
-  - Unified chart export: the `ExportDialog` components build `/export` payloads that include both tabular data and chart series, and PDF exports now render charts as graphics rather than x/y coordinate tables so that exported visuals align closely with the on-screen SVG bar/line/histogram charts.
-  - Implemented an area-driven sidebar wired to `/areas` with live search, suggestions, and selection, and lifted `selectedArea` state into `App`. The sidebar footer now includes **Unload** and **Reset** controls: Unload clears the selected area and returns pages to their placeholder state; Reset keeps the current area but restores all page-level statistics and UI state to their initial baseline values.
-- Sidebar now uses a fixed, left-aligned layout with Montserrat typography and two responsive modes:
-  - Desktop: wider rail with labels, larger nav icons, and a clear active-state rail (full-width dark highlight with a teal left border).
-  - Mobile: off-canvas panel opened via a top-left hamburger; the same nav icons are shown, and the sidebar can collapse to an icon-only rail on larger screens using a small edge toggle.
-- Area search is available both in the sidebar (desktop) and as a top-of-header search bar on mobile; both feed the same `/areas` suggestions and update the shared `selectedArea` state.
-- Implemented shared API helpers and hooks (`api.ts`, `useAdvisory`, `useGrowthSeries`, `useEnergySeries`, `useTrafficSeries`) to fetch REAL data series and advisory insights from the FastAPI backend.
-- Implemented SVG-based `BarChart`, `LineChart`, and `Histogram` components with axes, tick labels, light gridlines, and centered layout that display REAL growth, energy, and traffic series once an area is selected, using a unified title icon shape and page-specific accent colors (Urban Growth: bar chart, #91e03f; Energy: line chart, #f87b14; Traffic: histogram, #f24152; same mapping used on the dashboard summary charts).
-- Extended charts to support multiple overlaid series with a colour key legend for **Real**, **Predicted**, **Simulated**, and **Optimal** curves/bars; colours are coordinated across pages (Predicted: `#de3388`, Simulated: `#1b55ce`, Optimal: `#08c44d`, plus the existing per-domain REAL accents).
-- Wired REAL vs SIMULATE modes on the Urban Growth, Energy, and Traffic pages via a header `ModeToggle` (Real/Simulate) and a floating `ActionToggle` (Predict/Optimize/Simulate) that only highlights the chosen action and includes small click animations. The Simulate button is hidden in REAL mode and, when visible, triggers `/simulate/run` via `useSimulationSeries` only when clicked (no auto-run on mode switch), using page-specific parameters.
-- In REAL mode, clicking **Predict** now calls the backend `/ts/forecast` endpoint to obtain an advanced forecast (using HF time-series models when configured, or a deterministic fallback otherwise) and uses this as the "Predicted" overlay and bracketed values in the tables (e.g., `123,000 (130,000)` in `#de3388`). In SIMULATE mode, clicking **Simulate** overlays the SIMULATE series (in `#1b55ce`) similarly; when **Optimize** is active, an "Optimal" series is derived from REAL+SIMULATE and overlaid in `#08c44d`, with matching brackets in the tables; the simulation-parameter cards use a warm `#fffcf3` background to visually tie SIMULATE mode together.
-- Implemented an OSM-based Leaflet map component that overlays `/hotspots/areas` and `/hotspots/areas/forecast`, showing dense population, congestion, and inefficient energy usage in soft translucent red regions and highlighting improving areas as soft translucent green "optimal zones" when Optimize is active; hooked this into a floating `ActionToggle` (Predict/Optimize/Simulate) positioned at the bottom-right with project-specified colors. A simple "optimal zones" concept exists today (green hotspots and a derived optimal-zones list), and advisory panels include contextual text that references these green zones when Optimize is active.
-- Added a sticky, blurred page header that enlarges and brightens the gradient page title and icon on scroll for better contrast over a semi-transparent black background, plus a small semantic icon per page (home, growth, energy, traffic), and a compact Sign out button that remains visible on mobile.
-- Added a frosted-glass "AI Analysis & Insights" container on each page (with a gradient sparkle icon) that renders advisory text via a `FormattedInsights` component (markdown syntax stripped, redundant "Insights" headings/underlines removed, profile headings such as "Energy Profile", "Traffic Profile", "Growth in Population" plus "Recommended Actions" and Short-/Medium-/Long-term labels bolded) and a persistent, slightly darker footer strip describing SUSPS and attribution (Developed by David Lameck).
-
-- Environment parity
-  - Confirmed the local vs Render story (local PostgreSQL + `data/<CITY>/{raw,processed}` vs Render PostgreSQL + S3 `susps-raw-data`) and S3 sync tooling as described below.
+For a dated snapshot of the system’s current state, roadmap, and acceptance criteria, see `system_status.md`. WARP.md focuses on day-to-day development workflows (commands, environment parity, and architecture) and intentionally does not maintain a detailed change log.
 
 ---
 

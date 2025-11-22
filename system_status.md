@@ -1,6 +1,6 @@
 # System Status
 
-This document summarizes the current state of the SUSPS repository: what’s done, what’s next, and the desired end-state for the system.
+This document summarizes the current state of the SUSPS repository: what’s done, what’s next, and the desired end-state for the system. It complements `WARP.md` (day-to-day development workflows and commands) and `docs/documentation.md` (thesis-style system and design documentation).
 
 ## Current status (2025-11-20)
 - Lint/format/typecheck/tests: green locally (Ruff, Black, Mypy). Pytest suite passes with the new simulation, time-series, and hotspot tests.
@@ -22,6 +22,7 @@ This document summarizes the current state of the SUSPS repository: what’s don
 - If using DB: run `python -m src.backend.db.seed_from_processed` to load processed artifacts into `energy_consumption`, `traffic_flow`, `environment_features`, `air_quality_daily`, and `hotspot_scores`.
 - Backend: run `uvicorn src.backend.api:app --reload` (check `/health`, explore `/docs`).
 - Frontend: from `src/frontend`, run `npm install` (first time) then `npm run dev` and open `http://localhost:5173` (React SPA calls the FastAPI backend via `VITE_API_BASE_URL`).
+- For more detailed setup commands and environment parity workflows, see `WARP.md`.
 
 ## 1) What’s implemented
 
@@ -96,6 +97,7 @@ This document summarizes the current state of the SUSPS repository: what’s don
   - Consider adding `python-multipart` only if file uploads or form parsing are introduced; otherwise keep dependencies minimal.
 - Documentation
 - Keep WARP.md, README, and this status document in sync with the React area-driven frontend, new endpoints (simulation, time-series, hotspots), and the local↔Render parity workflow.
+- Maintain a thesis-style documentation file (`documentation.md`) that consolidates system objectives, architecture, implementation, testing, and evaluation for final submission.
 
 ## 3) End-state (target architecture)
 
@@ -167,8 +169,9 @@ Milestone M4  UX polish, simulation & forecasting surfaces
 Milestone M5 — Reliability, tests, and documentation (FINAL)
 - Add tests for new endpoints (per-area series, hotspots, simulation/time-series) and, where feasible, React frontend integration or E2E tests.
 - Finalize environment-parity checks and document a reproducible path to show local vs Render matching responses for a given city and area.
+- Produce a comprehensive thesis-style report in `documentation.md` (to be converted to Word) that follows the university thesis guidelines, explains changes from the initial proposal, and references all major data sources and design decisions.
 - Keep legacy demo toggles removed (`/config` and `_DEFAULT_SOURCE` are gone) and optionally remove any remaining demo semantics at the API level if they are no longer desired.
-- Keep WARP.md, README, and system_status.md in sync with the final behavior.
+- Keep WARP.md, README, `documentation.md`, and system_status.md in sync with the final behavior.
 
 Exit criteria (definition of done)
 - Render app: `area-select` works; growth/energy/traffic plus hotspot and summary endpoints power charts; docs reflect the area-driven, no-toggle behavior.

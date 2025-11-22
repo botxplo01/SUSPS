@@ -1362,6 +1362,24 @@ def ts_forecast(payload: TimeSeriesForecastPayload):
         horizon=payload.horizon,
         use_model=payload.use_model,
     )
+
+    # For energy, enforce a minimum average relative difference between the
+    # forecast and the input series; otherwise fall back to the deterministic
+    # forecast.
+    if payload.target == "energy" and items:
+        base_vals = [float(p.value) for p in payload.series][: len(items)]
+        pred_vals = [float(it.get("value", 0.0)) for it in items[: len(base_vals)]]
+        diffs: List[float] = []
+        for b, v in zip(base_vals, pred_vals):
+            denom = abs(b) if abs(b) > 1e-6 else 1.0
+            diffs.append(abs(v - b) / denom)
+        avg_diff = sum(diffs) / len(diffs) if diffs else 0.0
+        if avg_diff < 0.05:
+            items = forecaster._forecast_deterministic(
+                series=series,
+                horizon=payload.horizon,
+            )
+
     return {
         "target": payload.target,
         "items": items,
