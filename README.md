@@ -1,121 +1,161 @@
 # SUSPS: Smart Urban Simulation and Prediction System
 
-SUSPS is an AI-driven system to predict urban growth, forecast energy demand, and simulate traffic flow for Zambian cities.
+**SUSPS** is a sophisticated, AI-driven platform designed for urban planning and resource management in the context of rapidly growing cities, with an initial focus on Lusaka, Zambia. The system provides predictive insights into urban growth, energy consumption, and traffic patterns, enabling city planners, policymakers, and researchers to make data-informed decisions.
 
-- Web UI: React + Tailwind CSS SPA in `src/frontend`
-- Backend: FastAPI (Python)
-- Deployment: Render (Procfile + Gunicorn) for the API; Vite for local frontend dev
+This project is developed as a Final Year Software Engineering Project, showcasing a modern, full-stack application with a decoupled architecture, a data processing pipeline, and machine learning-powered features.
 
-Quick start:
-- Create a venv and install requirements
-- Run backend locally: `uvicorn src.backend.api:app --reload`
-- In a separate terminal, start the React dev server from `src/frontend`: `npm install` then `npm run dev`
-- Open the React UI at the URL printed by Vite (default http://127.0.0.1:5173)
+## System Architecture
 
-See `docs/specification.md` for the full spec and `docs/user_guide.md` for usage.
+The SUSPS platform is built on a decoupled, service-oriented architecture, which allows for independent development, deployment, and scaling of its components. The system comprises three main parts: a React-based frontend, a FastAPI backend, and a data processing pipeline.
 
-## Demo API (no DB)
-
-These endpoints are available in the Render deployment and local non-DB runs.
-
-- GET `/growth`
-- GET `/energy`
-- GET `/traffic`
-
-Examples (truncated):
-
-- `/growth`
-
-  ```json
-  {"items": [
-    {"year": 2025, "predicted_population": 800000},
-    {"year": 2026, "predicted_population": 824000}
-  ]}
-  ```
-
-- `/energy`
-
-  ```json
-  {"items": [
-    {"hour": 0, "demand_mwh": 5.0},
-    {"hour": 8, "demand_mwh": 8.0}
-  ]}
-  ```
-
-- `/traffic`
-
-  ```json
-  {"items": [
-    {"hour": 7, "volume": 850},
-    {"hour": 18, "volume": 900}
-  ]}
-  ```
-
-## Data pipeline: regenerate artifacts
-
-This project includes a lightweight data pipeline that produces CSVs under `data/raw/` and `data/processed/`.
-
-- Python modules (no extra tools required):
-  - `python -m src.pipeline.ingest`
-  - `python -m src.pipeline.preprocess`
-  - `python -m src.pipeline.synthetic` (optional)
-  - `python -m src.pipeline.fairness` (optional)
-
-- Optional: DVC orchestration (if you use DVC):
-  - `dvc repro`
-
-Outputs include:
-- `data/raw/`: worldpop_summary.csv, energy_demand.csv, traffic_flows.csv, environment_monthly.csv, socioeconomic.csv
-- `data/processed/`: worldpop_features.csv, energy_features.csv, traffic_features.csv, environment_features.csv, socioeconomic_features.csv, synthetic_demographics.csv, fairness_report.csv
-
-## Optional: Database mode (local/Render)
-
-The app can read recent series from PostgreSQL when enabled; otherwise it falls back to processed files, then synthetic data.
-
-Requirements
-- PostgreSQL 14+ (or compatible) with PostGIS. In psql you can enable extensions:
-  - CREATE EXTENSION postgis;
-  - CREATE EXTENSION postgis_topology;
-
-Configure
-- Set environment variables (examples):
-  - USE_DB=1
-  - DATABASE_URL=postgresql+psycopg2://postgres:YOUR_PASSWORD@localhost:5432/susps_db_local
-- Alternatively for local-only: USE_LOCAL_DB=true and LOCAL_DATABASE_URL=...
-
-Initialize tables (one-time)
-- Run this once to create the minimal tables used by the API:
-```python path=null start=null
-# Create tables in the configured DATABASE_URL
-from src.backend.db.base import Base
-from src.backend.db.session import engine
-import src.backend.db.tables  # ensure models are imported
-Base.metadata.create_all(bind=engine)
+``` graphql:
++-----------------+      +-----------------+      +-----------------+
+|   Frontend      |      |   Backend       |      |   Data Pipeline |
+| (React, Vite)   | <--> | (FastAPI, Python)| <--> | (Python, Pandas)|
++-----------------+      +-----------------+      +-----------------+
+        |                      |                      |
+        v                      v                      v
++-----------------+      +-----------------+      +-----------------+
+|   User          |      |   Database      |      |   Data Sources  |
+| (Web Browser)   |      | (PostgreSQL)    |      | (S3, APIs)      |
++-----------------+      +-----------------+      +-----------------+
 ```
 
-Notes
-- If geoalchemy2 is installed, an optional geometry column is available on urban_areas.
-- When USE_DB is enabled, the API serves energy/traffic endpoints from the DB first; if empty, processed/synthetic fallbacks are used.
+## Features
 
-## Deployment (Render)
+- **Urban Growth Prediction**: Forecasts population growth and urban expansion using historical data and predictive models.
+- **Energy Demand Forecasting**: Predicts energy consumption patterns across different times of the day and seasons.
+- **Traffic Flow Simulation**: Simulates traffic flow and congestion patterns to identify potential bottlenecks.
+- **AI Advisory Engine**: Provides actionable insights and recommendations based on the analysis of the system's predictions.
+- **Interactive Data Visualization**: A rich, map-based user interface to visualize data and simulation results.
+- **Scenario Simulation**: Allows users to create and compare different "what-if" scenarios for urban development.
+- **Hotspot Analysis**: Identifies areas of interest, such as potential congestion hotspots or areas with high energy demand.
 
-This repo includes a `Procfile` and a Render blueprint `render.yaml`.
+## Technology Stack
 
-1. Push this repo to GitHub (or GitLab/Bitbucket)
-   - Initialize git: `git init`
-   - Add files: `git add .`
-   - Commit: `git commit -m "chore: initial scaffold"`
-   - Create a remote repo and push: `git remote add origin <YOUR_REPO_URL>` then `git push -u origin main`
+### Frontend
 
-2. Deploy on Render
-   - In Render dashboard: New → Blueprint → point to your repo
-   - Confirm service config from `render.yaml`
-   - Deploy. Health check path: `/health`
+- **Framework**: React with TypeScript
+- **Build Tool**: Vite
+- **Styling**: Tailwind CSS
+- **Mapping**: Leaflet
+- **Routing**: React Router
 
-Environment
-- Python version is set via `render.yaml` env var `PYTHON_VERSION` (3.11.9)
-- Start command uses Gunicorn with Uvicorn worker: `gunicorn src.backend.api:app -k uvicorn.workers.UvicornWorker`
+### Backend
 
-Production URLs
-- API health: `https://<your-app>.onrender.com/health`
-- Dashboard: `https://<your-app>.onrender.com/dash/`
+- **Framework**: FastAPI
+- **Language**: Python
+- **Database ORM**: SQLAlchemy
+- **Geospatial**: GeoAlchemy2
+- **API Specification**: OpenAPI (via Swagger UI)
+
+### Data Pipeline & Database
+
+- **Data Processing**: Pandas
+- **Database**: PostgreSQL with PostGIS for geospatial capabilities
+- **Data Storage**: AWS S3 for raw data storage
+
+## Getting Started
+
+To set up a local development environment, you will need to run the frontend and backend services separately.
+
+### Prerequisites
+
+- Python 3.11
+- Node.js 18 or later
+- PostgreSQL 14 or later (optional, for database-backed features)
+
+### Backend Setup
+
+1. **Clone the repository**:
+
+    ```bash
+    git clone https://github.com/your-username/SUSPS.git
+    cd SUSPS
+    ```
+
+2. **Create a virtual environment and install dependencies**:
+
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
+    pip install -r requirements.txt
+    ```
+
+3. **Run the backend server**:
+
+    ```bash
+    uvicorn src.backend.api:app --reload
+    ```
+
+    The API will be available at `http://127.0.0.1:8000`, and the interactive API documentation (Swagger UI) can be accessed at `http://127.0.0.1:8000/docs`.
+
+### Frontend Setup
+
+1. **Navigate to the frontend directory**:
+
+    ```bash
+    cd src/frontend
+    ```
+
+2. **Install dependencies**:
+
+    ```bash
+    npm install
+    ```
+
+3. **Run the frontend development server**:
+
+    ```bash
+    npm run dev
+    ```
+
+    The frontend will be available at `http://localhost:5173`.
+
+### Database Setup (Optional)
+
+For features that require a database, you can set up a local PostgreSQL instance.
+
+1. **Create a PostgreSQL database and user.**
+
+2. **Configure the database connection**:
+    Set the `USE_LOCAL_DB` and `LOCAL_DATABASE_URL` environment variables in a `.env` file in the root of the project.
+
+3. **Apply the database schema**:
+    The schema is defined in `src/backend/db/susps_schema_dump.sql`.
+
+4. **Seed the database**:
+    Run the seeding script to populate the database with processed data:
+
+    ```bash
+    python -m src.backend.db.seed_from_processed
+    ```
+
+## Deployment
+
+The SUSPS platform is deployed on Render, with the frontend and backend running as separate services.
+
+- **Frontend**: `https://susps-main.onrender.com`
+- **Backend**: `https://susps-web.onrender.com`
+
+The backend service is on a free tier and may spin down due to inactivity. The frontend is configured to automatically send a "wake-up" request to the backend upon loading to ensure a seamless user experience.
+
+## Usage
+
+Access the deployed frontend at `https://susps-main.onrender.com`. From the dashboard, you can navigate to different sections to explore predictions and simulations for urban growth, energy, and traffic.
+
+## Data Pipeline
+
+The data pipeline is a series of Python scripts that ingest, process, and enrich data from various sources. The pipeline is orchestrated to produce clean, analysis-ready datasets that are used by the backend and the machine learning models.
+
+To run the pipeline locally:
+
+```bash
+python -m src.pipeline.ingest
+python -m src.pipeline.preprocess
+```
+
+The pipeline reads raw data and writes processed artifacts to the `data/` directory.
+
+---
+*This project is for educational purposes as part of a Final Year Software Engineering degree.*
