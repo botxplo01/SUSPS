@@ -5,26 +5,15 @@ __pycache__/
 .venv/
 venv/
 .env
-.env.*
 
 # Envs
 render_envs.txt
-
-# In Development
-to_consider.md
-in_dev.txt
 
 # Data
 /data/*
 !/data/raw/.gitkeep
 /data/processed/*
 !/data/processed/.gitkeep
-
-# Data Sources and Integration Refs
-data_integration_guide.md
-data_sources.md
-data_sources_tree.md
-data_integration_guide_v4.md
 
 # Debugging
 error_logs.txt
@@ -51,12 +40,3 @@ logs/
 
 # Temp / local artifacts
 /tmp_project_items.json
-
-# Running
-run.md
-
-# Docs
-present.md
-present.docx
-Thesis_guidelines.pdf
-SUSPS thesis-style documentation and status updates.md

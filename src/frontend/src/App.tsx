@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
@@ -25,6 +25,24 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [pageExporter, setPageExporter] = useState<(() => void) | null>(null);
   const location = useLocation();
+
+  useEffect(() => {
+    if (window.location.hostname === "susps-main.onrender.com") {
+      console.log("Waking up the backend...");
+      fetch("https://susps-web.onrender.com/health")
+        .then((res) => {
+          if (res.ok) {
+            console.log("Backend is awake.");
+          } else {
+            console.error("Backend wake-up call failed with status:", res.status);
+          }
+        })
+        .catch((err) => {
+          console.error("Backend wake-up call failed:", err);
+        });
+    }
+  }, []);
+
 
   const isAuthRoute =
     location.pathname === "/signin" || location.pathname === "/signup";
