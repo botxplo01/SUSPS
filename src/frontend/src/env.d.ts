@@ -1,3 +1,5 @@
+// @author: Lameck David Musumpuka
+
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {

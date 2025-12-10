@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 """API tests for forecasted area hotspots endpoints."""
 
 from __future__ import annotations

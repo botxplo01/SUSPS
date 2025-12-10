@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 """End-to-end pipeline test exercising ingest, preprocess, synthetic, fairness."""
 
 from pathlib import Path

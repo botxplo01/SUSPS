@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 """FastAPI app smoke tests for health and advisory endpoints."""
 
 import pytest

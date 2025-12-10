@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 """Small synthetic data generators used to keep the pipeline runnable offline.
 
 Currently provides a simple demographics generator plus a helper to persist the

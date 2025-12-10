@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 """Utility functions for syncing data/<CITY>/raw/ with an S3 bucket.
 
 These helpers are optional and guarded by environment flags so local runs and

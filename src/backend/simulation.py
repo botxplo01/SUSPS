@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 """Deterministic simulation helpers used by the SIMULATE API endpoints.
 
 These functions adjust baseline growth, energy, and traffic series using

@@ -1,3 +1,5 @@
+/** @author: Lameck David Musumpuka **/
+
 export function Footer() {
   return (
     <footer className="mt-8 -mx-4 border-t border-neutral-300 bg-neutral-200/90 px-6 py-5 text-sm text-gray-800">

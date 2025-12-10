@@ -1,3 +1,5 @@
+/** @author: Lameck David Musumpuka **/
+
 import { useEffect, useState } from "react";
 import { fetchJson } from "../api";
 import type { ChartPoint } from "../types";

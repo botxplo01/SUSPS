@@ -1,3 +1,5 @@
+/** @author: Lameck David Musumpuka **/
+
 interface DescriptionSectionProps {
   title: string;
   children?: React.ReactNode;

@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 from __future__ import annotations
 
 from src.backend.db.base import Base

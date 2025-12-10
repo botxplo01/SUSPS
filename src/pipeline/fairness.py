@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 """Minimal fairness and coverage audits for processed tabular data.
 
 Provides helpers to compute a demographic parity gap, geographic coverage, and

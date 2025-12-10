@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 """Traffic volume helpers used by the /traffic endpoints.
 
 They expose 24-hour profiles derived from processed traffic artifacts, with a

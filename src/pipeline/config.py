@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 """Central configuration for the SUSPS data pipeline.
 
 Defines project- and city-scoped data directories, domain-specific raw folders,

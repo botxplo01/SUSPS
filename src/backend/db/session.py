@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 from __future__ import annotations
 
 # Database engine and session factory configuration for the SUSPS backend.

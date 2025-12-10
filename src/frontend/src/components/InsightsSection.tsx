@@ -1,3 +1,5 @@
+/** @author: Lameck David Musumpuka **/
+
 interface InsightsSectionProps {
   children?: React.ReactNode;
 }

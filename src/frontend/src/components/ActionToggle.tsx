@@ -1,3 +1,5 @@
+/** @author: Lameck David Musumpuka **/
+
 import { useState } from "react";
 import type { Mode } from "../types";
 

@@ -1,3 +1,5 @@
+/** @author: Lameck David Musumpuka **/
+
 import type { InputHTMLAttributes } from "react";
 
 interface FloatingLabelInputProps extends InputHTMLAttributes<HTMLInputElement> {

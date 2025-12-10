@@ -5,6 +5,8 @@ uses the Hugging Face text generator to produce cached advisory insights
 for dashboard and domain-specific scopes.
 """
 
+# @author: David Lameck
+
 import datetime as dt
 from statistics import mean
 from typing import Any, Dict, List, Tuple, Optional

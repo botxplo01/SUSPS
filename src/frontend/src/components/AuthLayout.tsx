@@ -1,3 +1,5 @@
+/** @author: Lameck David Musumpuka **/
+
 import type { ReactNode } from "react";
 
 interface AuthLayoutProps {

@@ -1,3 +1,5 @@
+/** @author: Lameck David Musumpuka **/
+
 import type React from "react";
 
 interface TableProps {

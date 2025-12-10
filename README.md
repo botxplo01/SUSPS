@@ -1,4 +1,4 @@
-# SUSPS: Smart Urban Simulation and Prediction System
+# SUSPS: Smart Urban Simulation and Prediction System by David Lameck
 
 **SUSPS** is a sophisticated, AI-driven platform designed for urban planning and resource management in the context of rapidly growing cities, with an initial focus on Lusaka, Zambia. The system provides predictive insights into urban growth, energy consumption, and traffic patterns, enabling city planners, policymakers, and researchers to make data-informed decisions.
 
@@ -139,6 +139,8 @@ The SUSPS platform is deployed on Render, with the frontend and backend running 
 - **Backend**: `https://susps-web.onrender.com`
 
 The backend service is on a free tier and may spin down due to inactivity. The frontend is configured to automatically send a "wake-up" request to the backend upon loading to ensure a seamless user experience.
+
+Please note that due to the use of a free plan, the service experiences longer startup times. After 50 seconds of inactivity, the system is automatically spun down, and it might need to take at least 3-5 minutes to fully startup from a cold start. If starting from a cold start, you are advised to attempt to sign in at least 3-4 times within the 3 minute threshold after the first attempt, making sure you make the second attempt at least after 3 minutes after the first.
 
 ## Usage
 

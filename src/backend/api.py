@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 """FastAPI application for the Smart Urban Simulation and Prediction System (SUSPS).
 
 Exposes REST endpoints for growth, energy, traffic, environment, hotspots,

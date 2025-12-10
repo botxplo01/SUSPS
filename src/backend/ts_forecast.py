@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 """Time-series forecasting helper used by the /ts/forecast endpoint.
 
 Provides a small abstraction over Hugging Face text models with a

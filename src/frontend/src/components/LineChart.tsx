@@ -1,3 +1,5 @@
+/** @author: Lameck David Musumpuka **/
+
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import type { ChartPoint, ChartSeries, ChartExportHandle } from "../types";
 

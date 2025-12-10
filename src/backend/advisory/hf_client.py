@@ -4,6 +4,7 @@ Handles token loading, model selection, and robust fallbacks so that
 advisory and time-series helpers can request text generations without
 embedding Hugging Face API details.
 """
+# @author: Lameck David Musumpuka
 
 import os
 import sys

@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 """Energy model helpers backing the /energy endpoints.
 
 Functions here derive a 24-hour demand profile and simple sector summary from

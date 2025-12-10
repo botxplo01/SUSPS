@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 from __future__ import annotations
 
 """Seed the SUSPS database from processed pipeline outputs.

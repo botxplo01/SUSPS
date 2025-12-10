@@ -1,3 +1,5 @@
+/** @author: Lameck David Musumpuka **/
+
 type Mode = "REAL" | "SIMULATE";
 
 interface ModeToggleProps {

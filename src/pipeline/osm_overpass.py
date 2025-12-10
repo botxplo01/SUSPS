@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 """Helpers for querying OpenStreetMap via the Overpass API.
 
 Provides utilities to build Overpass QL queries, convert responses to GeoJSON,

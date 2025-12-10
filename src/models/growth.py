@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 """Population growth helpers for REAL and SIMULATE modes.
 
 These functions read processed census and worldpop features when available and

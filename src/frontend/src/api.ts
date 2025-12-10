@@ -1,4 +1,6 @@
 /**
+ * @author: Lameck David Musumpuka
+ * 
  * Base URL for all backend API calls.
  *
  * Defaults to the local FastAPI dev server when VITE_API_BASE_URL is not set.

@@ -1,3 +1,5 @@
+/** @author: Lameck David Musumpuka **/
+
 interface FormattedInsightsProps {
   text: string;
 }

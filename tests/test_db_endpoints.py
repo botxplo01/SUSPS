@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 """End-to-end tests against a real database-backed API, gated by E2E_DOCKER."""
 
 import os

@@ -1,3 +1,5 @@
+// @author: Lameck David Musumpuka
+
 import { useState, useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Sidebar } from "./components/Sidebar";

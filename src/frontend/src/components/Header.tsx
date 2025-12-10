@@ -1,3 +1,5 @@
+/** @author: Lameck David Musumpuka **/
+
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { Area } from "../types";

@@ -1,3 +1,5 @@
+# @author: Lameck David Musumpuka
+
 """Raw data ingestion utilities for the SUSPS pipeline.
 
 This module fetches or synthesizes demographic, energy, traffic, climate, air

@@ -1,3 +1,5 @@
+// @author: Lameck David Musumpuka
+
 import { useEffect, useState, useRef } from "react";
 import { AreaBadge } from "../components/AreaBadge";
 import { ModeToggle } from "../components/ModeToggle";
