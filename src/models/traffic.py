@@ -1,4 +1,4 @@
-# @author: Lameck David Musumpuka
+# @author: David Lameck
 
 """Traffic volume helpers used by the /traffic endpoints.
 

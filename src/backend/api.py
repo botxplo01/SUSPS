@@ -1,4 +1,4 @@
-# @author: Lameck David Musumpuka
+# @author: David Lameck
 
 """FastAPI application for the Smart Urban Simulation and Prediction System (SUSPS).
 

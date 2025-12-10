@@ -1,4 +1,4 @@
-/** @author: Lameck David Musumpuka **/
+/** @author: David Lameck **/
 
 import { useState } from "react";
 import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";

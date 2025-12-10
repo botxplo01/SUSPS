@@ -1,4 +1,4 @@
-# @author: Lameck David Musumpuka
+# @author: David Lameck
 
 """Minimal fairness and coverage audits for processed tabular data.
 

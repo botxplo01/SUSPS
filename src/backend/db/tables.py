@@ -1,3 +1,5 @@
+# @author: David Lameck
+
 from __future__ import annotations
 
 import os

@@ -1,4 +1,4 @@
-// @author: Lameck David Musumpuka
+// @author: David Lameck
 
 /** Shared frontend types for areas, charts, exports, and auth. */
 export type Mode = "REAL" | "SIMULATE";

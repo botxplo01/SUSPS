@@ -1,4 +1,4 @@
-# @author: Lameck David Musumpuka
+# @author: David Lameck
 
 """Deterministic simulation helpers used by the SIMULATE API endpoints.
 

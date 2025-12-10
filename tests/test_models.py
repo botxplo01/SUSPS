@@ -1,4 +1,4 @@
-# @author: Lameck David Musumpuka
+# @author: David Lameck
 
 """Structural smoke test to ensure the backend models package imports."""
 

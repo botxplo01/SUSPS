@@ -1,4 +1,4 @@
-# @author: Lameck David Musumpuka
+# @author: David Lameck
 
 """Population growth helpers for REAL and SIMULATE modes.
 

@@ -1,4 +1,4 @@
-# @author: Lameck David Musumpuka
+# @author: David Lameck
 
 """Small synthetic data generators used to keep the pipeline runnable offline.
 

@@ -1,4 +1,4 @@
--- @author: Lameck David Musumpuka
+-- @author: David Lameck
 -- SUSPS unified database schema dump (PostgreSQL)
 -- Compatible with local PostgreSQL and Render PostgreSQL service
 -- Generated from src/backend/db/tables.py

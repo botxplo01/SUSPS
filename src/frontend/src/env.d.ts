@@ -1,4 +1,4 @@
-// @author: Lameck David Musumpuka
+// @author: David Lameck
 
 /// <reference types="vite/client" />
 

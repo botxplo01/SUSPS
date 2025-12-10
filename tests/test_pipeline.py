@@ -1,4 +1,4 @@
-# @author: Lameck David Musumpuka
+# @author: David Lameck
 
 """End-to-end pipeline test exercising ingest, preprocess, synthetic, fairness."""
 

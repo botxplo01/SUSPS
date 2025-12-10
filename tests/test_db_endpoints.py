@@ -1,4 +1,4 @@
-# @author: Lameck David Musumpuka
+# @author: David Lameck
 
 """End-to-end tests against a real database-backed API, gated by E2E_DOCKER."""
 
