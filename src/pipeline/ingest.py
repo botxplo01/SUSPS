@@ -281,18 +281,15 @@ def _tomtom_sample_flows(lat: float, lon: float, api_key: str) -> pd.DataFrame:
     """Sample TomTom flow segment data and derive a 24h pseudo volume profile.
 
     This helper attempts to build an hourly profile for the past 24 hours by
-    querying TomTom's flowSegmentData endpoint at hourly intervals around the
-    current time (UTC). When the `dateTime` parameter is not supported or
-    requests fail, callers should fall back to a synthetic profile.
-
-    Note: TomTom does not provide volumes directly here; we derive a rough
-    proxy from speed vs free-flow speed and then aggregate per hour.
+    querying TomTom's flowSegmentData endpoint. If historical data is sparse
+    (often due to API plan limits), it fetches the current congestion and
+    scales a synthetic profile to provide a dynamic, representative 24h curve.
     """
     rows: list[dict] = []
-    # small grid around center
     steps = [(-0.03, -0.03), (-0.03, 0.03), (0.0, 0.0), (0.03, -0.03), (0.03, 0.03)]
     now_utc = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
 
+    # Attempt to fetch the last 24 hours of historical data.
     for offset in range(24):
         ts = now_utc - timedelta(hours=23 - offset)
         hour = ts.hour
@@ -301,7 +298,6 @@ def _tomtom_sample_flows(lat: float, lon: float, api_key: str) -> pd.DataFrame:
             plat, plon = lat + dlat, lon + dlon
             try:
                 params = {"point": f"{plat},{plon}", "key": api_key}
-                # Best-effort: ask for historical snapshots when supported.
                 params["dateTime"] = date_time_str
                 r = requests.get(
                     "https://api.tomtom.com/traffic/services/4/flowSegmentData/relative0/10/json",
@@ -314,9 +310,9 @@ def _tomtom_sample_flows(lat: float, lon: float, api_key: str) -> pd.DataFrame:
                     js.get("currentSpeed", js.get("currentSpeedUncapped", 30.0))
                 )
                 free = float(js.get("freeFlowSpeed", max(speed, 30.0)))
+                # Rough congestion proxy: ratio of free-flow to current speed
                 ratio = min(max(free / max(speed, 1.0), 0.5), 4.0)
-                # proxy capacity (veh/h) scaled by ratio
-                base_cap = 600
+                base_cap = 600  # proxy capacity (veh/h)
                 vph = int(base_cap * ratio)
                 rows.append(
                     {
@@ -327,20 +323,91 @@ def _tomtom_sample_flows(lat: float, lon: float, api_key: str) -> pd.DataFrame:
                     }
                 )
             except Exception:
-                # skip point on failure for this hour/segment
+                continue  # Skip point on failure
+
+    df = pd.DataFrame(rows)
+
+    # If historical data is sparse, generate a scaled synthetic profile.
+    hours_covered = 0
+    if not df.empty and "hour" in df.columns:
+        try:
+            hours_covered = int(df["hour"].nunique())
+        except Exception:
+            hours_covered = 0
+
+    if hours_covered < 6:
+        current_congestion_ratio = 1.0
+        ratios = []
+        fallback_steps = [(-0.03, -0.03), (0.0, 0.0), (0.03, 0.03)]
+        for dlat, dlon in fallback_steps:
+            plat, plon = lat + dlat, lon + dlon
+            try:
+                # Get current conditions (no dateTime)
+                r = requests.get(
+                    "https://api.tomtom.com/traffic/services/4/flowSegmentData/relative0/10/json",
+                    params={"point": f"{plat},{plon}", "key": api_key},
+                    timeout=10,
+                )
+                r.raise_for_status()
+                js = r.json().get("flowSegmentData", {})
+                speed = float(
+                    js.get("currentSpeed", js.get("currentSpeedUncapped", 30.0))
+                )
+                free = float(js.get("freeFlowSpeed", max(speed, 30.0)))
+                ratio = min(max(free / max(speed, 1.0), 0.5), 2.5)  # Bounded
+                ratios.append(ratio)
+            except Exception:
                 continue
 
-    return pd.DataFrame(rows)
+        if ratios:
+            current_congestion_ratio = sum(ratios) / len(ratios)
+
+        # Build a scaled synthetic curve
+        hours = list(range(24))
+        synthetic_curve = [
+            (
+                150
+                if h < 6
+                else (
+                    850
+                    if h in (7, 8)
+                    else 400
+                    if h < 16
+                    else 900
+                    if h in (17, 18)
+                    else 200
+                )
+            )
+            for h in hours
+        ]
+
+        scaled_curve = []
+        for h, vph in zip(hours, synthetic_curve):
+            if 7 <= h <= 9 or 16 <= h <= 19:  # Scale peak hours
+                scaling_factor = min(max(current_congestion_ratio, 0.5), 1.8)
+                scaled_vph = int(vph * scaling_factor)
+            else:
+                scaled_vph = vph
+            scaled_curve.append(scaled_vph)
+
+        return pd.DataFrame(
+            {
+                "corridor": ["A1_scaled"] * 24,
+                "hour": hours,
+                "veh_per_hour": scaled_curve,
+                "mode_share_bus": [0.18] * 24,
+            }
+        )
+
+    return df
 
 
 def fetch_traffic() -> pd.DataFrame:
     """Traffic flows by corridor and hour with provider selection.
 
-    Defaults to TomTom if configured; falls back to a synthetic 24h profile.
+    Defaults to TomTom if configured, which now includes a dynamic fallback.
+    Otherwise, it provides a static synthetic 24h profile.
     """
-
-    # Canonical 24h synthetic profile used whenever the provider is unavailable
-    # or TomTom coverage is too sparse (e.g. only a handful of hours succeed).
     hours = list(range(24))
     synthetic_curve = [
         (
@@ -367,17 +434,9 @@ def fetch_traffic() -> pd.DataFrame:
             df = _tomtom_sample_flows(
                 lat, lon, config.TOMTOM_API_KEY  # type: ignore[arg-type]
             )
-            if isinstance(df, pd.DataFrame) and not df.empty and "hour" in df.columns:
-                try:
-                    hours_covered = int(df["hour"].nunique())
-                except Exception:
-                    hours_covered = 0
-                # Require a minimum diversity of hours to avoid degenerate
-                # single-hour profiles (e.g. only hour=0 with ~600 veh/h).
-                if hours_covered >= 6:
-                    return df
-            # If TomTom data is missing or too sparse, fall back to synthetic.
-        # placeholder for future OSM-based option
+            # The flow sampler now returns a dynamic profile; use if valid.
+            if isinstance(df, pd.DataFrame) and not df.empty:
+                return df
         return fallback
     except Exception:
         return fallback
