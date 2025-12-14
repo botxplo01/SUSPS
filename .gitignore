@@ -6,17 +6,11 @@ __pycache__/
 venv/
 .env
 
-# Envs
-render_envs.txt
-
 # Data
 /data/*
 !/data/raw/.gitkeep
 /data/processed/*
 !/data/processed/.gitkeep
-
-# Debugging
-error_logs.txt
 
 # Build / Dist
 /dist/*
@@ -40,3 +34,4 @@ logs/
 
 # Temp / local artifacts
 /tmp_project_items.json
+.vscode/
