@@ -26,7 +26,7 @@ if [ "${DB_BOOTSTRAP_ON_START:-0}" = "1" ]; then
   python -m src.pipeline.preprocess
 
   echo "[render-start] Creating database schema..."
-  python scripts/create_schema.py
+  python -m scripts.create_schema
 
   echo "[render-start] Seeding Postgres from processed artifacts..."
   python -m src.backend.db.seed_from_processed

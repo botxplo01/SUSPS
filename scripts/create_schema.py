@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Add project root to sys.path to allow imports from 'src'
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
+
 from src.backend.db.base import Base
 from src.backend.db.session import engine
 import src.backend.db.tables  # noqa: F401 - ensure models are registered
+
 
 
 def main() -> None:
