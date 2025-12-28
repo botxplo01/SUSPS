@@ -4,13 +4,13 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
-.env
+# .env
 
 # Data
-/data/*
-!/data/raw/.gitkeep
-/data/processed/*
-!/data/processed/.gitkeep
+# /data/*
+# !/data/raw/.gitkeep
+# /data/processed/*
+# !/data/processed/.gitkeep
 
 # Build / Dist
 /dist/*
