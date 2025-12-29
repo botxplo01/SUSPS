@@ -857,6 +857,22 @@ def demo_traffic(
         if snap_payload and snap_payload.get("items"):
             return snap_payload
 
+        live_payload = _get_live_traffic_payload(force_refresh=(fresh == 1))
+        if live_payload and live_payload.get("items"):
+            meta = (
+                live_payload.get("meta")
+                if isinstance(live_payload.get("meta"), dict)
+                else {}
+            )
+            return {
+                **live_payload,
+                "meta": {
+                    **(meta or {}),
+                    "day": "yesterday",
+                    "fallback_day": "today",
+                },
+            }
+
         try:
             items = traffic_profile_from_processed()
             if items:
