@@ -224,60 +224,13 @@ export function TrafficPage({
   }, [onRegisterExporter]);
 
   useEffect(() => {
-    let cancelled = false;
-    const pollMs = 60000;
-
-    const load = async (forceRefresh: boolean) => {
-      setLiveLoading(true);
-      setLiveError(null);
-      try {
-        const data = await fetchJson<any>("/traffic/live", {
-          fresh: forceRefresh ? 1 : 0,
-        });
-        if (!cancelled) setLivePayload(data);
-      } catch (err) {
-        if (!cancelled) {
-          setLivePayload(null);
-          setLiveError(
-            err instanceof Error ? err.message : "Live traffic unavailable.",
-          );
-        }
-      } finally {
-        if (!cancelled) setLiveLoading(false);
-      }
-    };
-
-    const stopPolling = () => {
+    // Manual refresh only for live traffic (credit-friendly). Keep the last
+    // loaded payload until the user explicitly clicks Refresh.
+    return () => {
       if (liveTimerRef.current != null) {
         window.clearInterval(liveTimerRef.current);
         liveTimerRef.current = null;
       }
-    };
-
-    const startPolling = () => {
-      stopPolling();
-      liveTimerRef.current = window.setInterval(() => {
-        if (document.visibilityState !== "visible") return;
-        void load(false);
-      }, pollMs);
-    };
-
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") {
-        void load(false);
-        startPolling();
-      } else {
-        stopPolling();
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibility);
-    handleVisibility();
-
-    return () => {
-      cancelled = true;
-      document.removeEventListener("visibilitychange", handleVisibility);
-      stopPolling();
     };
   }, []);
 
@@ -519,6 +472,19 @@ export function TrafficPage({
             <p className="mt-1 text-xs text-gray-600">
               TomTom flow snapshot near {selectedArea?.name ?? "your city"}.
             </p>
+            {livePayload?.meta && (
+              <p className="mt-1 text-[11px] text-gray-500">
+                Updated{" "}
+                {typeof livePayload.meta.served_at === "string"
+                  ? livePayload.meta.served_at
+                  : typeof livePayload.meta.generated_at === "string"
+                    ? livePayload.meta.generated_at
+                    : "—"}
+                {typeof livePayload.meta.cached === "boolean"
+                  ? ` (cached: ${livePayload.meta.cached ? "yes" : "no"})`
+                  : ""}
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -548,6 +514,12 @@ export function TrafficPage({
         )}
         {!liveLoading && liveError && (
           <p className="mt-3 text-xs text-red-600">{liveError}</p>
+        )}
+
+        {!liveLoading && !liveError && !livePayload && (
+          <p className="mt-3 text-xs text-gray-500">
+            Click Refresh to fetch a live TomTom snapshot.
+          </p>
         )}
 
         {!liveLoading && !liveError && livePayload?.meta && (

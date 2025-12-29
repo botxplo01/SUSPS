@@ -15,6 +15,7 @@ import pandas as pd
 import requests
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+import hashlib
 
 from . import config
 from .osm_overpass import fetch_osm_for_city_bbox, save_geojson
@@ -347,10 +348,53 @@ def _tomtom_sample_flows(lat: float, lon: float, api_key: str) -> pd.DataFrame:
         for h in hours
     ]
 
-    scaled_curve = []
+    # TomTom flowSegmentData does not include veh/hour volume, so we generate a
+    # pseudo volume profile by taking the canonical curve and modulating it
+    # using the current congestion ratio plus a time-of-day weighting.
+    #
+    # Important: if congestion_ratio is ~1.0 (free-flow), a naive global scaling
+    # produces the exact canonical curve, which looks "stuck". The logic below
+    # ensures we still get a slightly adjusted but stable curve.
+    now = datetime.now(timezone.utc)
+    current_hour = int(now.hour)
+    base_scale = min(max(float(current_congestion_ratio), 0.6), 1.6)
+
+    date_key = now.date().isoformat()
+    speed_key = ""
+    try:
+        if avg_current_speed is not None and avg_free_speed is not None:
+            speed_key = f"{float(avg_current_speed):.1f}/{float(avg_free_speed):.1f}"
+    except Exception:
+        speed_key = ""
+
+    def _hour_distance(a: int, b: int) -> int:
+        d = abs(a - b) % 24
+        return min(d, 24 - d)
+
+    scaled_curve: list[int] = []
     for h, vph in zip(hours, synthetic_curve):
-        scaling_factor = min(max(current_congestion_ratio, 0.5), 1.8)
-        scaled_curve.append(int(vph * scaling_factor))
+        # Emphasize the scaling more near the current hour and less far away.
+        # proximity: 1.0 at current hour, ~0.0 at 12h away.
+        proximity = 1.0 - (_hour_distance(h, current_hour) / 12.0)
+        proximity = min(max(proximity, 0.0), 1.0)
+
+        # Blend base_scale toward 1.0 as you move away from current hour.
+        hour_scale = 1.0 + (base_scale - 1.0) * (0.35 + 0.65 * proximity)
+
+        # Add a small deterministic variation so free-flow (ratio~1) doesn't
+        # collapse to the exact canonical curve. This is stable per (date,hour)
+        # and depends on TomTom signals so it still "tracks" real conditions.
+        seed = f"{date_key}|h={h}|n={len(ratios)}|r={current_congestion_ratio:.3f}|s={speed_key}"
+        digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()
+        jitter_u = int(digest[:8], 16) / float(0xFFFFFFFF)
+        jitter = (jitter_u - 0.5) * 0.10  # +/- 5%
+
+        # Reduce jitter impact when congestion is clearly high/low.
+        # When ratio is near 1.0, allow full jitter; when far, damp it.
+        jitter_weight = max(0.2, 1.0 - min(abs(base_scale - 1.0) / 0.5, 1.0))
+        adj = max(0.65, min(1.75, hour_scale * (1.0 + jitter * jitter_weight)))
+
+        scaled_curve.append(int(round(float(vph) * adj)))
 
     return pd.DataFrame(
         {
