@@ -8,9 +8,7 @@ venv/
 
 # Data
 /data/*
-# !/data/raw/.gitkeep
-# /data/processed/*
-# !/data/processed/.gitkeep
+
 
 # Build / Dist
 /dist/*
