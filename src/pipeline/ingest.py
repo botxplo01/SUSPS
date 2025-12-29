@@ -285,121 +285,87 @@ def _tomtom_sample_flows(lat: float, lon: float, api_key: str) -> pd.DataFrame:
     (often due to API plan limits), it fetches the current congestion and
     scales a synthetic profile to provide a dynamic, representative 24h curve.
     """
-    rows: list[dict] = []
     steps = [(-0.03, -0.03), (-0.03, 0.03), (0.0, 0.0), (0.03, -0.03), (0.03, 0.03)]
-    now_utc = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
-
-    # Attempt to fetch the last 24 hours of historical data.
-    for offset in range(24):
-        ts = now_utc - timedelta(hours=23 - offset)
-        hour = ts.hour
-        date_time_str = ts.isoformat(timespec="seconds").replace("+00:00", "Z")
-        for i, (dlat, dlon) in enumerate(steps, start=1):
-            plat, plon = lat + dlat, lon + dlon
-            try:
-                params = {"point": f"{plat},{plon}", "key": api_key}
-                params["dateTime"] = date_time_str
-                r = requests.get(
-                    "https://api.tomtom.com/traffic/services/4/flowSegmentData/relative0/10/json",
-                    params=params,
-                    timeout=10,
-                )
-                r.raise_for_status()
-                js = r.json().get("flowSegmentData", {})
-                speed = float(
-                    js.get("currentSpeed", js.get("currentSpeedUncapped", 30.0))
-                )
-                free = float(js.get("freeFlowSpeed", max(speed, 30.0)))
-                # Rough congestion proxy: ratio of free-flow to current speed
-                ratio = min(max(free / max(speed, 1.0), 0.5), 4.0)
-                base_cap = 600  # proxy capacity (veh/h)
-                vph = int(base_cap * ratio)
-                rows.append(
-                    {
-                        "corridor": f"TT_{i}",
-                        "hour": hour,
-                        "veh_per_hour": vph,
-                        "mode_share_bus": 0.18,
-                    }
-                )
-            except Exception:
-                continue  # Skip point on failure
-
-    df = pd.DataFrame(rows)
-
-    # If historical data is sparse, generate a scaled synthetic profile.
-    hours_covered = 0
-    if not df.empty and "hour" in df.columns:
+    ratios: list[float] = []
+    current_speeds: list[float] = []
+    free_speeds: list[float] = []
+    confidences: list[float] = []
+    road_closures: list[bool] = []
+    for dlat, dlon in steps:
+        plat, plon = lat + dlat, lon + dlon
         try:
-            hours_covered = int(df["hour"].nunique())
-        except Exception:
-            hours_covered = 0
-
-    if hours_covered < 6:
-        current_congestion_ratio = 1.0
-        ratios = []
-        fallback_steps = [(-0.03, -0.03), (0.0, 0.0), (0.03, 0.03)]
-        for dlat, dlon in fallback_steps:
-            plat, plon = lat + dlat, lon + dlon
-            try:
-                # Get current conditions (no dateTime)
-                r = requests.get(
-                    "https://api.tomtom.com/traffic/services/4/flowSegmentData/relative0/10/json",
-                    params={"point": f"{plat},{plon}", "key": api_key},
-                    timeout=10,
-                )
-                r.raise_for_status()
-                js = r.json().get("flowSegmentData", {})
-                speed = float(
-                    js.get("currentSpeed", js.get("currentSpeedUncapped", 30.0))
-                )
-                free = float(js.get("freeFlowSpeed", max(speed, 30.0)))
-                ratio = min(max(free / max(speed, 1.0), 0.5), 2.5)  # Bounded
-                ratios.append(ratio)
-            except Exception:
+            r = requests.get(
+                "https://api.tomtom.com/traffic/services/4/flowSegmentData/relative0/10/json",
+                params={"point": f"{plat},{plon}", "key": api_key},
+                timeout=10,
+            )
+            r.raise_for_status()
+            js = r.json().get("flowSegmentData", {})
+            # Treat responses without real speed fields as unusable. Otherwise
+            # we'd silently fall back to defaults (e.g. 30/30 => ratio 1.0)
+            # which makes it look like traffic never changes.
+            has_speed = ("currentSpeed" in js) or ("currentSpeedUncapped" in js)
+            has_free = "freeFlowSpeed" in js
+            if not js or not has_speed or not has_free:
                 continue
 
-        if ratios:
-            current_congestion_ratio = sum(ratios) / len(ratios)
+            speed = float(js.get("currentSpeed", js.get("currentSpeedUncapped", 0.0)))
+            free = float(js.get("freeFlowSpeed", 0.0))
+            if speed <= 0 or free <= 0:
+                continue
 
-        # Build a scaled synthetic curve
-        hours = list(range(24))
-        synthetic_curve = [
-            (
-                150
-                if h < 6
-                else (
-                    850
-                    if h in (7, 8)
-                    else 400
-                    if h < 16
-                    else 900
-                    if h in (17, 18)
-                    else 200
-                )
+            ratio = min(max(free / max(speed, 1.0), 0.5), 2.5)
+            ratios.append(ratio)
+            current_speeds.append(speed)
+            free_speeds.append(free)
+            try:
+                confidences.append(float(js.get("confidence", 0.0)))
+            except Exception:
+                confidences.append(0.0)
+            road_closures.append(bool(js.get("roadClosure", False)))
+        except Exception:
+            continue
+
+    if not ratios:
+        return pd.DataFrame()
+
+    current_congestion_ratio = sum(ratios) / len(ratios)
+    avg_current_speed = (sum(current_speeds) / len(current_speeds)) if current_speeds else None
+    avg_free_speed = (sum(free_speeds) / len(free_speeds)) if free_speeds else None
+    avg_confidence = (sum(confidences) / len(confidences)) if confidences else None
+    any_road_closure = any(road_closures) if road_closures else None
+
+    hours = list(range(24))
+    synthetic_curve = [
+        (
+            150
+            if h < 6
+            else (
+                850 if h in (7, 8) else 400 if h < 16 else 900 if h in (17, 18) else 200
             )
-            for h in hours
-        ]
-
-        scaled_curve = []
-        for h, vph in zip(hours, synthetic_curve):
-            if 7 <= h <= 9 or 16 <= h <= 19:  # Scale peak hours
-                scaling_factor = min(max(current_congestion_ratio, 0.5), 1.8)
-                scaled_vph = int(vph * scaling_factor)
-            else:
-                scaled_vph = vph
-            scaled_curve.append(scaled_vph)
-
-        return pd.DataFrame(
-            {
-                "corridor": ["A1_scaled"] * 24,
-                "hour": hours,
-                "veh_per_hour": scaled_curve,
-                "mode_share_bus": [0.18] * 24,
-            }
         )
+        for h in hours
+    ]
 
-    return df
+    scaled_curve = []
+    for h, vph in zip(hours, synthetic_curve):
+        scaling_factor = min(max(current_congestion_ratio, 0.5), 1.8)
+        scaled_curve.append(int(vph * scaling_factor))
+
+    return pd.DataFrame(
+        {
+            "corridor": ["TT_live"] * 24,
+            "hour": hours,
+            "veh_per_hour": scaled_curve,
+            "mode_share_bus": [0.18] * 24,
+            "congestion_ratio": [float(current_congestion_ratio)] * 24,
+            "current_speed": [avg_current_speed] * 24,
+            "free_flow_speed": [avg_free_speed] * 24,
+            "confidence": [avg_confidence] * 24,
+            "road_closure": [any_road_closure] * 24,
+            "samples_used": [int(len(ratios))] * 24,
+        }
+    )
 
 
 def fetch_traffic() -> pd.DataFrame:

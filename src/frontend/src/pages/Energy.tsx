@@ -1,6 +1,6 @@
 // @author: David Lameck
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AreaBadge } from "../components/AreaBadge";
 import { ModeToggle } from "../components/ModeToggle";
 import { DescriptionSection } from "../components/DescriptionSection";
@@ -134,7 +134,6 @@ export function EnergyPage({
   const zoneId = selectedArea ? selectedArea.name : null;
   const scenarioLabel = getEnergyScenarioLabel(scenarioId);
   const scenarioClass = getEnergyScenarioClass(scenarioId);
-  const { insights, loading, error } = useAdvisory("energy", zoneId, scenarioId);
   const { points: energyPoints, loading: energyLoading } = useEnergySeries(
     selectedArea ? selectedArea.id : null,
   );
@@ -159,6 +158,55 @@ export function EnergyPage({
   );
 
   const basePoints = energyPoints;
+
+  const advisorySnapshot = useMemo(() => {
+    const series: { metric: "energy"; label: string; points: ChartPoint[] }[] = [];
+
+    if (basePoints.length) {
+      series.push({ metric: "energy", label: "Real", points: basePoints });
+    }
+    if (
+      mode === "REAL" &&
+      predictedEnergy.length === basePoints.length &&
+      predictedEnergy.length
+    ) {
+      series.push({ metric: "energy", label: "Predicted", points: predictedEnergy });
+    }
+    if (
+      mode === "SIMULATE" &&
+      simulateRun > 0 &&
+      simulateEnergyPoints.length === basePoints.length
+    ) {
+      series.push({
+        metric: "energy",
+        label: "Simulated",
+        points: simulateEnergyPoints,
+      });
+    }
+    if (optimize && optimalEnergy.length === basePoints.length && optimalEnergy.length) {
+      series.push({ metric: "energy", label: "Optimal", points: optimalEnergy });
+    }
+
+    return {
+      active_view: mode,
+      series,
+    };
+  }, [
+    basePoints,
+    mode,
+    predictedEnergy,
+    simulateRun,
+    simulateEnergyPoints,
+    optimize,
+    optimalEnergy,
+  ]);
+
+  const { insights, loading, error } = useAdvisory(
+    "energy",
+    zoneId,
+    scenarioId,
+    advisorySnapshot,
+  );
 
   useEffect(() => {
     if (!onRegisterExporter) return;

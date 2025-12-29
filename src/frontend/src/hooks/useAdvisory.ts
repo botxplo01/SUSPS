@@ -1,9 +1,23 @@
 /** @author: David Lameck **/
 
 import { useEffect, useState } from "react";
-import { fetchJson } from "../api";
+import { fetchJson, postJson } from "../api";
+import type { ChartPoint } from "../types";
 
 export type AdvisoryScope = "dashboard" | "growth" | "energy" | "traffic";
+
+export type AdvisoryMetric = "growth" | "energy" | "traffic";
+
+export interface AdvisorySnapshotSeries {
+  metric: AdvisoryMetric;
+  label: string;
+  points: ChartPoint[];
+}
+
+export interface AdvisorySnapshotPayload {
+  active_view?: string | null;
+  series: AdvisorySnapshotSeries[];
+}
 
 interface AdvisoryResponse {
   scope: string;
@@ -33,6 +47,7 @@ export function useAdvisory(
   scope: AdvisoryScope,
   zoneId: string | null,
   scenario?: string | null,
+  snapshot?: AdvisorySnapshotPayload | null,
 ): UseAdvisoryResult {
   const [insights, setInsights] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -55,10 +70,20 @@ export function useAdvisory(
     setLoading(true);
     setError(null);
 
-    fetchJson<AdvisoryResponse>(`/advisory/${scope}`, {
-      zone_id: zoneId,
-      scenario: scenario ?? undefined,
-    })
+    const params = new URLSearchParams();
+    params.set("zone_id", zoneId);
+    if (scenario) params.set("scenario", scenario);
+    const qs = params.toString();
+    const url = qs ? `/advisory/${scope}?${qs}` : `/advisory/${scope}`;
+
+    const req = snapshot
+      ? postJson<AdvisoryResponse>(url, snapshot)
+      : fetchJson<AdvisoryResponse>(`/advisory/${scope}`, {
+          zone_id: zoneId,
+          scenario: scenario ?? undefined,
+        });
+
+    req
       .then((data) => {
         if (cancelled) return;
         setInsights(data.insights ?? "");
@@ -78,7 +103,7 @@ export function useAdvisory(
     return () => {
       cancelled = true;
     };
-  }, [scope, zoneId, scenario]);
+  }, [scope, zoneId, scenario, snapshot]);
 
   return { insights, loading, error, meta };
 }

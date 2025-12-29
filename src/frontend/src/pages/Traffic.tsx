@@ -1,6 +1,6 @@
 // @author: David Lameck
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AreaBadge } from "../components/AreaBadge";
 import { ModeToggle } from "../components/ModeToggle";
 import { DescriptionSection } from "../components/DescriptionSection";
@@ -11,7 +11,7 @@ import { InsightsSection } from "../components/InsightsSection";
 import { ActionToggle } from "../components/ActionToggle";
 import { FormattedInsights } from "../components/FormattedInsights";
 import { ExportDialog } from "../components/ExportDialog";
-import { postJson, postBinary, downloadBlob } from "../api";
+import { postJson, postBinary, downloadBlob, fetchJson } from "../api";
 import type {
   Area,
   Mode,
@@ -127,14 +127,17 @@ export function TrafficPage({
   const [predictError, setPredictError] = useState<string | null>(null);
   const [optimalTraffic, setOptimalTraffic] = useState<ChartPoint[]>([]);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [livePayload, setLivePayload] = useState<any | null>(null);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const [liveError, setLiveError] = useState<string | null>(null);
   const chartRef = useRef<ChartExportHandle | null>(null);
+  const liveTimerRef = useRef<number | null>(null);
   const [exportTarget, setExportTarget] = useState<TrafficExportTarget | null>(
     null,
   );
   const zoneId = selectedArea ? selectedArea.name : null;
   const scenarioLabel = getTrafficScenarioLabel(scenarioId);
   const scenarioClass = getTrafficScenarioClass(scenarioId);
-  const { insights, loading, error } = useAdvisory("traffic", zoneId, scenarioId);
   const { points: trafficPoints, loading: trafficLoading } = useTrafficSeries(
     selectedArea ? selectedArea.id : null,
   );
@@ -159,6 +162,59 @@ export function TrafficPage({
   );
   const basePoints = trafficPoints;
 
+  const advisorySnapshot = useMemo(() => {
+    const series: { metric: "traffic"; label: string; points: ChartPoint[] }[] = [];
+
+    if (basePoints.length) {
+      series.push({ metric: "traffic", label: "Real", points: basePoints });
+    }
+    if (
+      mode === "REAL" &&
+      predictedTraffic.length === basePoints.length &&
+      predictedTraffic.length
+    ) {
+      series.push({
+        metric: "traffic",
+        label: "Predicted",
+        points: predictedTraffic,
+      });
+    }
+    if (
+      mode === "SIMULATE" &&
+      simulateRun > 0 &&
+      simulateTrafficPoints.length === basePoints.length
+    ) {
+      series.push({
+        metric: "traffic",
+        label: "Simulated",
+        points: simulateTrafficPoints,
+      });
+    }
+    if (optimize && optimalTraffic.length === basePoints.length && optimalTraffic.length) {
+      series.push({ metric: "traffic", label: "Optimal", points: optimalTraffic });
+    }
+
+    return {
+      active_view: mode,
+      series,
+    };
+  }, [
+    basePoints,
+    mode,
+    predictedTraffic,
+    simulateRun,
+    simulateTrafficPoints,
+    optimize,
+    optimalTraffic,
+  ]);
+
+  const { insights, loading, error } = useAdvisory(
+    "traffic",
+    zoneId,
+    scenarioId,
+    advisorySnapshot,
+  );
+
   useEffect(() => {
     if (!onRegisterExporter) return;
     onRegisterExporter(() => {
@@ -166,6 +222,64 @@ export function TrafficPage({
       setIsExportDialogOpen(true);
     });
   }, [onRegisterExporter]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const pollMs = 60000;
+
+    const load = async (forceRefresh: boolean) => {
+      setLiveLoading(true);
+      setLiveError(null);
+      try {
+        const data = await fetchJson<any>("/traffic/live", {
+          fresh: forceRefresh ? 1 : 0,
+        });
+        if (!cancelled) setLivePayload(data);
+      } catch (err) {
+        if (!cancelled) {
+          setLivePayload(null);
+          setLiveError(
+            err instanceof Error ? err.message : "Live traffic unavailable.",
+          );
+        }
+      } finally {
+        if (!cancelled) setLiveLoading(false);
+      }
+    };
+
+    const stopPolling = () => {
+      if (liveTimerRef.current != null) {
+        window.clearInterval(liveTimerRef.current);
+        liveTimerRef.current = null;
+      }
+    };
+
+    const startPolling = () => {
+      stopPolling();
+      liveTimerRef.current = window.setInterval(() => {
+        if (document.visibilityState !== "visible") return;
+        void load(false);
+      }, pollMs);
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void load(false);
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    handleVisibility();
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", handleVisibility);
+      stopPolling();
+    };
+  }, []);
 
   const runTrafficForecast = async () => {
     setMode("REAL");
@@ -394,6 +508,112 @@ export function TrafficPage({
           </>
         )}
       </DescriptionSection>
+
+      <section className="rounded-xl bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-red-600">
+              <span className="inline-block h-2 w-2 rounded-full bg-red-600" />
+              Live traffic
+            </h2>
+            <p className="mt-1 text-xs text-gray-600">
+              TomTom flow snapshot near {selectedArea?.name ?? "your city"}.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setLiveLoading(true);
+              setLiveError(null);
+              fetchJson<any>("/traffic/live", { fresh: 1 })
+                .then((data) => setLivePayload(data))
+                .catch((err: unknown) => {
+                  setLivePayload(null);
+                  setLiveError(
+                    err instanceof Error
+                      ? err.message
+                      : "Live traffic unavailable.",
+                  );
+                })
+                .finally(() => setLiveLoading(false));
+            }}
+            className="rounded-md bg-neutral-900 px-3 py-2 text-xs font-medium text-white hover:bg-neutral-800"
+          >
+            Refresh
+          </button>
+        </div>
+
+        {liveLoading && (
+          <p className="mt-3 text-xs text-gray-500">Loading live traffic...</p>
+        )}
+        {!liveLoading && liveError && (
+          <p className="mt-3 text-xs text-red-600">{liveError}</p>
+        )}
+
+        {!liveLoading && !liveError && livePayload?.meta && (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg bg-neutral-50 p-3">
+              <div className="text-[11px] font-medium text-gray-600">Congestion ratio</div>
+              <div className="mt-1 text-lg font-semibold text-gray-900">
+                {typeof livePayload.meta.avg_congestion_ratio === "number"
+                  ? livePayload.meta.avg_congestion_ratio.toFixed(2)
+                  : "—"}
+              </div>
+            </div>
+            <div className="rounded-lg bg-neutral-50 p-3">
+              <div className="text-[11px] font-medium text-gray-600">Current speed</div>
+              <div className="mt-1 text-lg font-semibold text-gray-900">
+                {typeof livePayload.meta.avg_current_speed === "number"
+                  ? `${livePayload.meta.avg_current_speed.toFixed(1)} km/h`
+                  : "—"}
+              </div>
+            </div>
+            <div className="rounded-lg bg-neutral-50 p-3">
+              <div className="text-[11px] font-medium text-gray-600">Free-flow speed</div>
+              <div className="mt-1 text-lg font-semibold text-gray-900">
+                {typeof livePayload.meta.avg_free_flow_speed === "number"
+                  ? `${livePayload.meta.avg_free_flow_speed.toFixed(1)} km/h`
+                  : "—"}
+              </div>
+            </div>
+            <div className="rounded-lg bg-neutral-50 p-3">
+              <div className="text-[11px] font-medium text-gray-600">Samples</div>
+              <div className="mt-1 text-lg font-semibold text-gray-900">
+                {typeof livePayload.meta.samples_used === "number"
+                  ? livePayload.meta.samples_used
+                  : "—"}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!liveLoading && !liveError && Array.isArray(livePayload?.points) && (
+          <div className="mt-3">
+            <Table
+              title="Live flow points"
+              columns={["Point", "Current", "Free-flow", "Ratio", "Confidence", "Closed"]}
+              rows={
+                livePayload.points.length
+                  ? livePayload.points.map((p: any) => [
+                      String(p.id ?? "—"),
+                      typeof p.current_speed === "number"
+                        ? `${p.current_speed.toFixed(1)} km/h`
+                        : "—",
+                      typeof p.free_flow_speed === "number"
+                        ? `${p.free_flow_speed.toFixed(1)} km/h`
+                        : "—",
+                      typeof p.congestion_ratio === "number"
+                        ? p.congestion_ratio.toFixed(2)
+                        : "—",
+                      typeof p.confidence === "number" ? p.confidence.toFixed(2) : "—",
+                      p.road_closure ? "Yes" : "No",
+                    ])
+                  : [["—", "—", "—", "—", "—", "—"]]
+              }
+            />
+          </div>
+        )}
+      </section>
 
       {selectedArea && mode === "SIMULATE" && (
         <section className="rounded-xl bg-[#fffcf3] p-4 shadow-sm">

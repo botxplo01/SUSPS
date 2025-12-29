@@ -20,10 +20,14 @@ import io
 import csv
 import zipfile
 from datetime import datetime, timezone
+from datetime import timedelta
 import hashlib
 import secrets
+import logging
 import requests
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+from pathlib import Path
+import json
 
 # Load .env in local dev so API picks up LOCAL_DATABASE_URL and local paths
 try:  # pragma: no cover - optional
@@ -47,7 +51,11 @@ from src.models.traffic import (
     daily_profile as traffic_profile,
     daily_profile_from_processed as traffic_profile_from_processed,
 )
-from src.backend.advisory import generate_insights_from_scope
+from src.pipeline.ingest import fetch_traffic as ingest_fetch_traffic
+from src.backend.advisory import (
+    generate_insights_from_scope,
+    generate_insights_from_snapshot,
+)
 from src.backend.advisory.hf_client import HFTextGenerator
 from src.backend.simulation import (
     simulate_growth,
@@ -56,7 +64,300 @@ from src.backend.simulation import (
 )
 from src.backend.ts_forecast import TimeSeriesForecaster
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="SUSPS Backend", version="0.1.0")
+
+_TRAFFIC_LIVE_CACHE: Dict[str, Any] = {"at": None, "payload": None}
+_TRAFFIC_LIVE_TTL_SECONDS = int(os.getenv("TRAFFIC_LIVE_TTL_SECONDS", "300"))
+
+_TRAFFIC_LIVE_POINTS_CACHE: Dict[str, Any] = {"at": None, "payload": None}
+_TRAFFIC_LIVE_POINTS_TTL_SECONDS = int(
+    os.getenv("TRAFFIC_LIVE_POINTS_TTL_SECONDS", "30")
+)
+
+_TRAFFIC_SNAPSHOTS_DIR = os.getenv("TRAFFIC_SNAPSHOTS_DIR", "traffic_live_snapshots")
+
+
+def _city_coords() -> tuple[float, float]:
+    try:
+        lat = float(os.getenv("CITY_LAT", "-1.286389"))
+        lon = float(os.getenv("CITY_LON", "36.817223"))
+    except Exception:
+        lat, lon = -1.286389, 36.817223
+    return lat, lon
+
+
+def _get_tomtom_live_points_payload(force_refresh: bool = False) -> Dict[str, Any]:
+    provider = (os.getenv("TRAFFIC_PROVIDER", "tomtom") or "tomtom").lower()
+    api_key = os.getenv("TOMTOM_API_KEY")
+    if provider != "tomtom" or not api_key:
+        return {"points": [], "meta": {"source": "unavailable"}}
+
+    now = datetime.now(timezone.utc)
+    cached_at = _TRAFFIC_LIVE_POINTS_CACHE.get("at")
+    if not force_refresh and (
+        isinstance(cached_at, datetime)
+        and (now - cached_at).total_seconds() < _TRAFFIC_LIVE_POINTS_TTL_SECONDS
+    ):
+        cached_payload = _TRAFFIC_LIVE_POINTS_CACHE.get("payload")
+        if isinstance(cached_payload, dict) and cached_payload.get("points"):
+            meta = cached_payload.get("meta") if isinstance(cached_payload.get("meta"), dict) else {}
+            return {**cached_payload, "meta": {**meta, "cached": True, "served_at": now.isoformat()}}
+
+    lat, lon = _city_coords()
+    steps = [(-0.02, -0.02), (-0.02, 0.02), (0.0, 0.0), (0.02, -0.02), (0.02, 0.02)]
+    points: List[Dict[str, Any]] = []
+
+    for idx, (dlat, dlon) in enumerate(steps, start=1):
+        plat, plon = lat + dlat, lon + dlon
+        try:
+            r = requests.get(
+                "https://api.tomtom.com/traffic/services/4/flowSegmentData/relative0/10/json",
+                params={"point": f"{plat},{plon}", "key": api_key},
+                timeout=10,
+            )
+            r.raise_for_status()
+            js = r.json().get("flowSegmentData", {})
+            has_speed = ("currentSpeed" in js) or ("currentSpeedUncapped" in js)
+            has_free = "freeFlowSpeed" in js
+            if not js or not has_speed or not has_free:
+                continue
+            cur = float(js.get("currentSpeed", js.get("currentSpeedUncapped", 0.0)))
+            free = float(js.get("freeFlowSpeed", 0.0))
+            if cur <= 0 or free <= 0:
+                continue
+            ratio = min(max(free / max(cur, 1.0), 0.5), 2.5)
+            try:
+                conf = float(js.get("confidence", 0.0))
+            except Exception:
+                conf = 0.0
+            points.append(
+                {
+                    "id": idx,
+                    "lat": plat,
+                    "lon": plon,
+                    "current_speed": cur,
+                    "free_flow_speed": free,
+                    "congestion_ratio": ratio,
+                    "confidence": conf,
+                    "road_closure": bool(js.get("roadClosure", False)),
+                }
+            )
+        except Exception:
+            continue
+
+    avg_ratio = None
+    avg_cur = None
+    avg_free = None
+    if points:
+        try:
+            avg_ratio = sum(float(p["congestion_ratio"]) for p in points) / len(points)
+            avg_cur = sum(float(p["current_speed"]) for p in points) / len(points)
+            avg_free = sum(float(p["free_flow_speed"]) for p in points) / len(points)
+        except Exception:
+            avg_ratio = None
+
+    payload = {
+        "points": points,
+        "meta": {
+            "source": "tomtom_flow",
+            "cached": False,
+            "generated_at": now.isoformat(),
+            "samples_used": int(len(points)),
+            "avg_congestion_ratio": avg_ratio,
+            "avg_current_speed": avg_cur,
+            "avg_free_flow_speed": avg_free,
+        },
+    }
+    _TRAFFIC_LIVE_POINTS_CACHE["at"] = now
+    _TRAFFIC_LIVE_POINTS_CACHE["payload"] = payload
+    return payload
+
+
+def _traffic_snapshots_dir() -> Path:
+    from src.pipeline import config as _cfg
+
+    _cfg.ensure_dirs()
+    base = getattr(_cfg, "MOBILITY_RAW_DIR", _cfg.RAW_DIR)
+    d = Path(base) / _TRAFFIC_SNAPSHOTS_DIR
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _append_traffic_snapshot(payload: Dict[str, Any]) -> None:
+    try:
+        meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+        if not isinstance(meta, dict):
+            return
+        if meta.get("source") != "tomtom_flow":
+            return
+        if not payload.get("points"):
+            return
+
+        # Only persist real fetches, not cache-served responses.
+        if meta.get("cached") is True:
+            return
+
+        now = datetime.now(timezone.utc)
+        out = _traffic_snapshots_dir() / f"{now.date().isoformat()}.jsonl"
+        record = {
+            "ts": now.isoformat(),
+            "meta": meta,
+        }
+        with out.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception:
+        return
+
+
+def _yesterday_profile_from_snapshots(target_date) -> Optional[Dict[str, Any]]:
+    try:
+        src = _traffic_snapshots_dir() / f"{target_date.isoformat()}.jsonl"
+        if not src.exists():
+            return None
+
+        hourly: Dict[int, List[float]] = {}
+        snapshots_used = 0
+        for line in src.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                rec = json.loads(line)
+                ts_raw = rec.get("ts")
+                meta = rec.get("meta") if isinstance(rec.get("meta"), dict) else {}
+                ratio = meta.get("avg_congestion_ratio")
+                if ts_raw is None or ratio is None:
+                    continue
+                ts = datetime.fromisoformat(str(ts_raw))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                try:
+                    ratio_f = float(ratio)
+                except Exception:
+                    continue
+                h = int(ts.astimezone(timezone.utc).hour)
+                hourly.setdefault(h, []).append(ratio_f)
+                snapshots_used += 1
+            except Exception:
+                continue
+
+        if not hourly:
+            return None
+
+        hourly_avg: Dict[int, float] = {
+            h: (sum(vals) / float(len(vals))) for h, vals in hourly.items() if vals
+        }
+        daily_avg = sum(hourly_avg.values()) / float(len(hourly_avg))
+
+        base_items = traffic_profile()
+        base_by_hour = {
+            int(it.get("hour", 0)): int(it.get("volume", 0)) for it in base_items
+        }
+
+        items: List[Dict[str, Any]] = []
+        for h in range(24):
+            base_v = int(base_by_hour.get(h, 0))
+            ratio = hourly_avg.get(h, daily_avg)
+            scaling_factor = min(max(float(ratio), 0.5), 1.8)
+            items.append({"hour": h, "volume": int(round(base_v * scaling_factor))})
+
+        return {
+            "items": items,
+            "meta": {
+                "source": "tomtom_snapshots",
+                "day": "yesterday",
+                "date": target_date.isoformat(),
+                "snapshots_used": snapshots_used,
+                "avg_congestion_ratio": float(daily_avg),
+            },
+        }
+    except Exception:
+        return None
+
+
+def _get_live_traffic_payload(force_refresh: bool = False) -> Optional[Dict[str, Any]]:
+    provider = (os.getenv("TRAFFIC_PROVIDER", "tomtom") or "tomtom").lower()
+    api_key = os.getenv("TOMTOM_API_KEY")
+    if provider != "tomtom" or not api_key:
+        return None
+
+    now = datetime.now(timezone.utc)
+    cached_at = _TRAFFIC_LIVE_CACHE.get("at")
+    if not force_refresh and (
+        isinstance(cached_at, datetime)
+        and (now - cached_at).total_seconds() < _TRAFFIC_LIVE_TTL_SECONDS
+    ):
+        cached_payload = _TRAFFIC_LIVE_CACHE.get("payload")
+        if isinstance(cached_payload, dict) and cached_payload.get("items"):
+            try:
+                meta = (
+                    cached_payload.get("meta")
+                    if isinstance(cached_payload.get("meta"), dict)
+                    else {}
+                )
+                return {
+                    **cached_payload,
+                    "meta": {**meta, "cached": True, "served_at": now.isoformat()},
+                }
+            except Exception:
+                pass
+            return cached_payload
+
+    try:
+        df = ingest_fetch_traffic()
+        if df is None or getattr(df, "empty", True):
+            return None
+        if "hour" not in df.columns or "veh_per_hour" not in df.columns:
+            return None
+        g = df.groupby("hour")["veh_per_hour"].mean().reset_index()
+        congestion_ratio = None
+        avg_current_speed = None
+        avg_free_flow_speed = None
+        avg_confidence = None
+        any_road_closure = None
+        samples_used = None
+        try:
+            if "congestion_ratio" in df.columns:
+                congestion_ratio = float(df["congestion_ratio"].astype(float).mean())
+            if "current_speed" in df.columns:
+                avg_current_speed = float(df["current_speed"].astype(float).mean())
+            if "free_flow_speed" in df.columns:
+                avg_free_flow_speed = float(df["free_flow_speed"].astype(float).mean())
+            if "confidence" in df.columns:
+                avg_confidence = float(df["confidence"].astype(float).mean())
+            if "road_closure" in df.columns:
+                any_road_closure = bool(df["road_closure"].fillna(False).astype(bool).any())
+            if "samples_used" in df.columns:
+                samples_used = int(float(df["samples_used"].fillna(0).astype(float).max()))
+        except Exception:
+            congestion_ratio = None
+        items: List[Dict[str, Any]] = [
+            {"hour": int(r["hour"]), "volume": int(float(r["veh_per_hour"]))}
+            for _, r in g.iterrows()
+        ]
+        if not items:
+            return None
+        payload = {
+            "items": items,
+            "meta": {
+                "source": "tomtom_live",
+                "cached": False,
+                "generated_at": now.isoformat(),
+                "congestion_ratio": congestion_ratio,
+                "avg_current_speed": avg_current_speed,
+                "avg_free_flow_speed": avg_free_flow_speed,
+                "avg_confidence": avg_confidence,
+                "any_road_closure": any_road_closure,
+                "samples_used": samples_used,
+            },
+        }
+        _TRAFFIC_LIVE_CACHE["at"] = now
+        _TRAFFIC_LIVE_CACHE["payload"] = payload
+        return payload
+    except Exception as exc:
+        logger.warning("Live traffic fetch failed; falling back. %s", exc)
+        return None
 
 # CORS (adjust origins as needed for deployment)
 app.add_middleware(
@@ -136,6 +437,22 @@ class AuthUser(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
     token: str
+
+
+class AdvisoryPoint(BaseModel):
+    x: float
+    y: float
+
+
+class AdvisorySeries(BaseModel):
+    metric: Literal["growth", "energy", "traffic"]
+    label: str
+    points: list[AdvisoryPoint]
+
+
+class AdvisorySnapshotPayload(BaseModel):
+    active_view: Optional[str] = None
+    series: list[AdvisorySeries]
 
 
 # --------------------------- export models ---------------------------
@@ -471,13 +788,88 @@ def demo_energy(area_id: Optional[int] = Query(None)):
 
 
 @app.get("/traffic")
-def demo_traffic(area_id: Optional[int] = Query(None)):
+def demo_traffic(
+    area_id: Optional[int] = Query(None),
+    fresh: int = Query(0),
+    day: str = Query("yesterday"),
+):
     """Return recent traffic series.
 
     When the database is enabled, this filters by `area_id` when provided; when
     disabled, it falls back to processed artifacts and then to a deterministic
     synthetic profile.
     """
+
+    day_key = (day or "yesterday").strip().lower()
+    is_yesterday = day_key in {"yesterday", "prev", "previous"}
+
+    # Default behaviour: show the previous day when possible.
+    if is_yesterday:
+        now = datetime.now(timezone.utc)
+        target_date = (now - timedelta(days=1)).date()
+        start = datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc)
+        end = start + timedelta(days=1)
+
+        if _DB_ENABLED:
+            try:
+                with SessionLocal() as db:  # type: ignore[name-defined]
+                    q = db.query(
+                        TrafficFlow.ts,
+                        TrafficFlow.predicted_volume,
+                        TrafficFlow.actual_volume,
+                    ).filter(TrafficFlow.ts >= start, TrafficFlow.ts < end)
+                    if area_id is not None:
+                        q = q.filter(TrafficFlow.area_id == area_id)
+                    rows = q.all()
+                    by_hour: Dict[int, List[float]] = {}
+                    for ts, pred, actual in rows:
+                        if ts is None:
+                            continue
+                        h = int(ts.astimezone(timezone.utc).hour)
+                        v = actual if actual is not None else pred
+                        if v is None:
+                            continue
+                        try:
+                            by_hour.setdefault(h, []).append(float(v))
+                        except Exception:
+                            continue
+
+                    if len(by_hour) >= 18:
+                        items = []
+                        for h in range(24):
+                            vals = by_hour.get(h)
+                            if vals:
+                                items.append({"hour": h, "volume": int(round(sum(vals) / len(vals)))})
+                            else:
+                                items.append({"hour": h, "volume": 0})
+                        return {
+                            "items": items,
+                            "meta": {
+                                "source": "db",
+                                "day": "yesterday",
+                                "date": target_date.isoformat(),
+                            },
+                        }
+            except Exception:
+                pass
+
+        snap_payload = _yesterday_profile_from_snapshots(target_date)
+        if snap_payload and snap_payload.get("items"):
+            return snap_payload
+
+        try:
+            items = traffic_profile_from_processed()
+            if items:
+                return {"items": items, "meta": {"source": "processed", "day": "yesterday"}}
+        except Exception:
+            pass
+        items = traffic_profile()
+        return {"items": items, "meta": {"source": "synthetic", "day": "yesterday"}}
+
+    live_payload = _get_live_traffic_payload(force_refresh=(fresh == 1))
+    if live_payload and live_payload.get("items"):
+        meta = live_payload.get("meta") if isinstance(live_payload.get("meta"), dict) else {}
+        return {**live_payload, "meta": {**(meta or {}), "day": "today"}}
 
     if _DB_ENABLED:
         try:
@@ -503,7 +895,7 @@ def demo_traffic(area_id: Optional[int] = Query(None)):
                     for r in rows
                 ]
                 if items:
-                    return {"items": items}
+                    return {"items": items, "meta": {"source": "db"}}
         except Exception:
             # Fall through to processed/demo fallback
             pass
@@ -511,11 +903,28 @@ def demo_traffic(area_id: Optional[int] = Query(None)):
     try:
         items = traffic_profile_from_processed()
         if items:
-            return {"items": items}
+            return {"items": items, "meta": {"source": "processed"}}
     except Exception:
         pass
     items = traffic_profile()
-    return {"items": items}
+    return {"items": items, "meta": {"source": "synthetic"}}
+
+
+@app.get("/traffic/live")
+def traffic_live(fresh: int = Query(0)):
+    provider = (os.getenv("TRAFFIC_PROVIDER", "tomtom") or "tomtom").lower()
+    api_key = os.getenv("TOMTOM_API_KEY")
+    if provider != "tomtom" or not api_key:
+        return JSONResponse(
+            {
+                "detail": "Live traffic requires TRAFFIC_PROVIDER=tomtom and TOMTOM_API_KEY.",
+            },
+            status_code=503,
+        )
+
+    payload = _get_tomtom_live_points_payload(force_refresh=(fresh == 1))
+    _append_traffic_snapshot(payload)
+    return payload
 
 
 @app.get("/")
@@ -1322,9 +1731,11 @@ def run_simulation(payload: SimulationRunPayload):
         if payload.module in ("growth", "all"):
             growth_base = (demo_growth() or {}).get("items", [])
         if payload.module in ("energy", "all"):
-            energy_base = (demo_energy() or {}).get("items", [])
+            energy_base = (demo_energy(area_id=payload.area_id) or {}).get("items", [])
         if payload.module in ("traffic", "all"):
-            traffic_base = (demo_traffic() or {}).get("items", [])
+            traffic_base = (
+                demo_traffic(area_id=payload.area_id, day="yesterday") or {}
+            ).get("items", [])
     except Exception:
         # Fall back to empty lists; helpers will return [] in that case
         growth_base, energy_base, traffic_base = [], [], []
@@ -2023,6 +2434,43 @@ def advisory(
 
     res = generate_insights_from_scope(
         scope_l, bundles, zone_id=zone_id, scenario=scenario
+    )
+    return {
+        "scope": scope_l,
+        "zone_id": zone_id,
+        "scenario": scenario,
+        "insights": res.get("text", ""),
+        "model": res.get("model"),
+        "cached": res.get("cached", False),
+        "generated_at": res.get("generated_at"),
+        "fallback": res.get("fallback", False),
+    }
+
+
+@app.post("/advisory/{scope}")
+def advisory_from_snapshot(
+    scope: str,
+    payload: AdvisorySnapshotPayload,
+    zone_id: Optional[str] = Query(None),
+    scenario: Optional[str] = Query(
+        None,
+        description=(
+            "Optional scenario label (e.g. 'baseline', 'remote_work', 'demand_response') "
+            "used to tailor advisory text to the current SIMULATE configuration."
+        ),
+    ),
+):
+    """Return markdown insights based on the series currently displayed in the UI.
+
+    The frontend provides the active chart series (Real/Predicted/Simulated/Optimal)
+    so the advisory engine can generate insights that match what the user is
+    looking at right now.
+    """
+
+    scope_l = (scope or "dashboard").lower()
+    snapshot_dict = payload.model_dump()
+    res = generate_insights_from_snapshot(
+        scope_l, snapshot_dict, zone_id=zone_id, scenario=scenario
     )
     return {
         "scope": scope_l,

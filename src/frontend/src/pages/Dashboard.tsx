@@ -1,6 +1,6 @@
 // @author: David Lameck
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AreaBadge } from "../components/AreaBadge";
 import { DescriptionSection } from "../components/DescriptionSection";
 import { LineChart } from "../components/LineChart";
@@ -51,10 +51,36 @@ export function DashboardPage({
 }: DashboardPageProps) {
   const zoneId = selectedArea ? selectedArea.name : null;
   const areaId = selectedArea ? selectedArea.id : null;
-  const { insights, loading, error } = useAdvisory("dashboard", zoneId, "baseline");
   const { points: growthPoints } = useGrowthSeries(areaId);
   const { points: energyPoints } = useEnergySeries(areaId);
   const { points: trafficPoints } = useTrafficSeries(areaId);
+
+  const advisorySnapshot = useMemo(() => {
+    const series = [] as {
+      metric: "growth" | "energy" | "traffic";
+      label: string;
+      points: { x: number; y: number }[];
+    }[];
+
+    if (growthPoints && growthPoints.length) {
+      series.push({ metric: "growth", label: "Real", points: growthPoints });
+    }
+    if (energyPoints && energyPoints.length) {
+      series.push({ metric: "energy", label: "Real", points: energyPoints });
+    }
+    if (trafficPoints && trafficPoints.length) {
+      series.push({ metric: "traffic", label: "Real", points: trafficPoints });
+    }
+
+    return { active_view: "REAL", series };
+  }, [growthPoints, energyPoints, trafficPoints]);
+
+  const { insights, loading, error } = useAdvisory(
+    "dashboard",
+    zoneId,
+    "baseline",
+    advisorySnapshot,
+  );
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const growthChartRef = useRef<ChartExportHandle | null>(null);
   const energyChartRef = useRef<ChartExportHandle | null>(null);

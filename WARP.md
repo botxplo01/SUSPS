@@ -96,12 +96,10 @@ It focuses on day-to-day development workflows: how to set up the environment, r
   - frontend/: Vite + React + Tailwind SPA (`src/frontend`) providing the SUSPS UI.
   - pipeline/: ingest, preprocess, synthetic, and S3 sync utilities
   - models/: deterministic helpers and lightweight stubs (growth/energy/traffic simulation, time-series, etc.) used by the backend; the UI now relies only on API endpoints rather than local demo stubs.
-- backend/: optional DB-focused Docker/PostGIS stack used for experiments and DB-backed E2E tests; not required for the final-year Render deployment path.
 - tests/: unit and e2e tests
 - data/: city-scoped outputs under `data/<CITY>/{raw,processed}` (default CITY=Nairobi)
 
 Notes
-- The `backend/` Docker stack is optional and used for DB-enabled experiments/E2E tests; it reuses the same FastAPI API and does not provide a separate UI.
 - Prefer `src/backend/api.py` for local and Render deployments.
 
 ### Feature: AI Advisory Engine (Hugging Face)
@@ -128,7 +126,7 @@ Notes
   3) Backend summarizes recent series and queries Hugging Face model
   4) Markdown-style insights are rendered inside the page's "AI Analysis & Insights" card with headings/profile sections emphasized by `FormattedInsights`.
 
-SUSPS is organized around a lightweight FastAPI API plus a separate React SPA frontend, with an optional, database-enabled variant for local development with PostGIS.
+SUSPS is organized around a lightweight FastAPI API plus a separate React SPA frontend.
 
 - Web application (no-DB path used for dev/tests/deploy)
   - Backend: `src/backend/api.py` defines a FastAPI app with CORS, a `/health` endpoint, and a root redirect to `/docs`.
@@ -145,7 +143,7 @@ SUSPS is organized around a lightweight FastAPI API plus a separate React SPA fr
 - Tests
   - API and advisory: `tests/test_api.py`, `tests/test_simulation_api.py`, `tests/test_ts_forecast_api.py`, `tests/test_hotspots_api.py`, `tests/test_hotspots_forecast_api.py`.
   - Pipeline: `tests/test_pipeline.py` runs ingest → preprocess → synthetic → fairness in a temporary data directory.
-  - DB/E2E: `tests/test_db_endpoints.py` (skipped unless `E2E_DOCKER=1`) checks DB-backed `/energy`, `/traffic`, and summary endpoints.
+  - DB/E2E: `tests/test_db_endpoints.py` (skipped unless `E2E_DB=1`) checks DB-backed `/energy`, `/traffic`, and summary endpoints.
   - Basic package check: `tests/test_models.py` imports `src.backend.models`.
 
 Key URLs

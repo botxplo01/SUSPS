@@ -1,6 +1,6 @@
 # @author: David Lameck
 
-"""End-to-end tests against a real database-backed API, gated by E2E_DOCKER."""
+"""End-to-end tests against a real database-backed API, gated by E2E_DB."""
 
 import os
 import pytest
@@ -8,7 +8,7 @@ import requests
 
 API_BASE_URL = os.getenv("E2E_BASE_URL", "http://localhost:8000")
 pytestmark = pytest.mark.skipif(
-    os.getenv("E2E_DOCKER") != "1", reason="E2E_DOCKER not enabled"
+    os.getenv("E2E_DB") != "1", reason="E2E_DB not enabled"
 )
 
 

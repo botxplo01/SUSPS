@@ -1,6 +1,6 @@
 // @author: David Lameck
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
@@ -48,6 +48,10 @@ export default function App() {
 
   const isAuthRoute =
     location.pathname === "/signin" || location.pathname === "/signup";
+
+  const handleRegisterExporter = useCallback((fn: () => void) => {
+    setPageExporter(() => fn);
+  }, []);
 
   if (isAuthRoute) {
     return (
@@ -113,7 +117,7 @@ export default function App() {
                     <DashboardPage
                       key={`dashboard-${selectedArea?.id ?? "none"}-${areaResetCounter}`}
                       selectedArea={selectedArea}
-                      onRegisterExporter={(fn) => setPageExporter(() => fn)}
+                      onRegisterExporter={handleRegisterExporter}
                     />
                   }
                 />
@@ -123,7 +127,7 @@ export default function App() {
                     <UrbanGrowthPage
                       key={`growth-${selectedArea?.id ?? "none"}-${areaResetCounter}`}
                       selectedArea={selectedArea}
-                      onRegisterExporter={(fn) => setPageExporter(() => fn)}
+                      onRegisterExporter={handleRegisterExporter}
                     />
                   }
                 />
@@ -133,7 +137,7 @@ export default function App() {
                     <EnergyPage
                       key={`energy-${selectedArea?.id ?? "none"}-${areaResetCounter}`}
                       selectedArea={selectedArea}
-                      onRegisterExporter={(fn) => setPageExporter(() => fn)}
+                      onRegisterExporter={handleRegisterExporter}
                     />
                   }
                 />
@@ -143,7 +147,7 @@ export default function App() {
                     <TrafficPage
                       key={`traffic-${selectedArea?.id ?? "none"}-${areaResetCounter}`}
                       selectedArea={selectedArea}
-                      onRegisterExporter={(fn) => setPageExporter(() => fn)}
+                      onRegisterExporter={handleRegisterExporter}
                     />
                   }
                 />

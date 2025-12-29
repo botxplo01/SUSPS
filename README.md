@@ -9,16 +9,16 @@ This project is developed as a Final Year Software Engineering Project, showcasi
 The SUSPS platform is built on a decoupled, service-oriented architecture, which allows for independent development, deployment, and scaling of its components. The system comprises three main parts: a React-based frontend, a FastAPI backend, and a data processing pipeline.
 
 ``` graphql:
-+-----------------+      +-----------------+      +-----------------+
-|   Frontend      |      |   Backend       |      |   Data Pipeline |
++-----------------+      +------------------+      +-----------------+
+|   Frontend      |      |   Backend        |      |   Data Pipeline |
 | (React, Vite)   | <--> | (FastAPI, Python)| <--> | (Python, Pandas)|
-+-----------------+      +-----------------+      +-----------------+
-        |                      |                      |
-        v                      v                      v
-+-----------------+      +-----------------+      +-----------------+
-|   User          |      |   Database      |      |   Data Sources  |
-| (Web Browser)   |      | (PostgreSQL)    |      | (S3, APIs)      |
-+-----------------+      +-----------------+      +-----------------+
++-----------------+      +------------------+      +-----------------+
+        |                         |                         |
+        v                         v                         v
++-----------------+      +-----------------+       +-----------------+
+|   User          |      |   Database      |       |   Data Sources  |
+| (Web Browser)   |      | (PostgreSQL)    |       | (S3, APIs)      |
++-----------------+      +-----------------+       +-----------------+
 ```
 
 ## Features

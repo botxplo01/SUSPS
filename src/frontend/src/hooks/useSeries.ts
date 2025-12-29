@@ -138,7 +138,7 @@ export function useTrafficSeries(areaId: number | null): SeriesResult {
     setLoading(true);
     setError(null);
 
-    fetchJson<{ items: any[] }>("/traffic", { area_id: areaId })
+    fetchJson<{ items: any[] }>("/traffic", { area_id: areaId, day: "yesterday" })
       .then((data) => {
         if (cancelled) return;
         const items = data.items ?? [];

@@ -54,7 +54,6 @@ This document summarizes the current state of the SUSPS repository: what’s don
 - App structure
   - FastAPI API for both local and Render: `src/backend/api.py`, with CORS and endpoints such as `/health`, `/growth`, `/energy`, and `/traffic`.
   - Database support: the unified app can run purely file-based or connect to PostgreSQL (local or Render-managed) when `USE_LOCAL_DB=true` or `USE_DB=1` and a `DATABASE_URL` is provided.
-  - Legacy Docker/PostGIS stack under `backend/` is retained for optional DB experiments/E2E tests but is not required for the final-year project.
 - Demo/API features (unified app)
   - Endpoints: `/health`, `/growth`, `/energy`, `/traffic`, `/energy/summary`, `/traffic/summary`, `/areas`, `/processed_data`, `/simulation_inputs`, `/simulate/run`, `/ts/forecast`, `/environment/features`, `/air_quality/daily`, `/hotspots/areas`, `/hotspots/areas/forecast`, `/hotspots/scores`, plus advisory endpoints.
   - UI now uses an area-driven pattern rather than a Demo/API toggle: charts and advisory are gated on `area-select` and always call the real API endpoints, which internally decide between DB/processed/synthetic data.
@@ -103,11 +102,9 @@ This document summarizes the current state of the SUSPS repository: what’s don
 
 - Frontend (React)
   - React + Tailwind SPA for demo and API-backed visualizations without DB.
-  - Optional Docker/local builds for DB-backed exploration with PostGIS.
   - Clear environment-driven toggles for data sources; ability to run side-by-side.
 - API (FastAPI)
   - Render: stateless demo endpoints, lightweight transformation endpoints
-  - Docker: CRUD + analytics endpoints backed by Postgres/PostGIS; Alembic-managed schema
 - Models layer
   - Predictive modules (growth, energy, traffic) encapsulated in `src/models/`
   - Each module supports both synthetic/demo data and real data via pipeline outputs
@@ -185,8 +182,8 @@ Exit criteria (definition of done)
   - `/health` returns OK; the React app renders pages with the sidebar area selection.
   - With no area selected, pages show descriptive content and placeholder charts only.
   - After selecting an area, `/growth`, `/energy`, `/traffic`, summaries, hotspots, and advisory endpoints return structured data and charts/advisory render without errors.
-- Docker/local DB app (if used)
-  - Migrations or schema application succeeds; seed scripts (if any) succeed; `/areas` is non-empty; `/energy/summary` and `/traffic/summary` return items where data is present.
+- Local DB app (if used)
+  - Schema application succeeds; seed scripts succeed; `/areas` is non-empty; `/energy/summary` and `/traffic/summary` return items where data is present.
 - CI
   - All checks pass (Ruff, Black, Mypy with package mode, unit tests).
 

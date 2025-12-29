@@ -401,5 +401,4 @@
  
  ## Notes
  
- - The `backend/` Docker stack is intentionally optional and decoupled from the main `src/` deployment path.
  - For full thesis-style documentation, see `docs/documentation.md`.

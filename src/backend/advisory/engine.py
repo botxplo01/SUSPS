@@ -72,6 +72,7 @@ def _build_prompt(
     summaries: Dict[str, Any],
     zone_id: Optional[str] = None,
     scenario: Optional[str] = None,
+    view: Optional[str] = None,
 ) -> str:
     # If a zone_id is provided, mention the selected area in the header
     context_parts: list[str] = []
@@ -79,12 +80,14 @@ def _build_prompt(
         context_parts.append(f"area/zone: {zone_id}")
     if scenario:
         context_parts.append(f"scenario: {scenario}")
+    if view:
+        context_parts.append(f"view: {view}")
     context_line = ""
     if context_parts:
         context_line = " (" + ", ".join(context_parts) + ")"
     header = (
         "You are an urban analytics advisor embedded in the Smart Urban Simulation and Prediction System (SUSPS).\n"
-        f"Given forecast outputs below{context_line}, analyze trends and provide realistic, actionable, and context-aware advice.\n"
+        f"Given the current outputs below{context_line}, analyze trends and provide realistic, actionable, and context-aware advice.\n"
         "Return concise insights followed by a prioritized action plan (short-term, medium-term).\n\n"
     )
     sections: List[str] = []
@@ -107,6 +110,10 @@ def _build_prompt(
             "osm_features",
             "osm_total_km",
             "top_admin_units",
+            "avg_vs_real_pct",
+            "peak_vs_real_pct",
+            "trough_vs_real_pct",
+            "last_vs_real_pct",
         ]
         for ek in extra_keys:
             if ek in summ:
@@ -263,7 +270,7 @@ def generate_insights_from_scope(
         scope if scope in {"dashboard", "growth", "energy", "traffic"} else "dashboard"
     )
     summary = _prepare_scope_data(scope, bundles)
-    prompt = _build_prompt(scope, summary, zone_id=zone_id, scenario=scenario)
+    prompt = _build_prompt(scope, summary, zone_id=zone_id, scenario=scenario, view=None)
     # stable cache key (sha256 of sorted JSON, including zone + scenario for context)
     summary_with_zone = {"zone_id": zone_id, "scenario": scenario, "data": summary}
     summary_json = json.dumps(summary_with_zone, sort_keys=True, default=str)
@@ -298,6 +305,142 @@ def generate_insights_from_scope(
             pass
     else:
         _cache_set(cache_key, text, gen.model)
+    return {
+        "text": text,
+        "model": gen.model,
+        "cached": False,
+        "generated_at": now_iso,
+        "fallback": is_fallback,
+    }
+
+
+def _prepare_snapshot_data(scope: str, snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    series = snapshot.get("series") if isinstance(snapshot, dict) else None
+    if not isinstance(series, list):
+        return out
+
+    # Group for optional comparisons
+    grouped: Dict[str, Dict[str, Dict[str, Any]]] = {}
+
+    for s in series:
+        if not isinstance(s, dict):
+            continue
+        metric = str(s.get("metric") or "").strip().lower()
+        label = str(s.get("label") or "").strip() or "series"
+        pts = s.get("points")
+        if not metric or not isinstance(pts, list):
+            continue
+
+        if scope != "dashboard" and metric != scope:
+            continue
+
+        norm_pts: List[Dict[str, Any]] = []
+        for p in pts:
+            if not isinstance(p, dict):
+                continue
+            try:
+                x = p.get("x")
+                y = p.get("y")
+                if y is None:
+                    continue
+                norm_pts.append({"x": x, "y": float(y)})
+            except Exception:
+                continue
+
+        summ = _summarize_timeseries(norm_pts, "x", "y")
+        key = f"{metric}_{label}".strip().lower().replace(" ", "_")
+        out[key] = summ
+        grouped.setdefault(metric, {})[label.strip().lower()] = summ
+
+    # Add comparisons to baseline/real if present.
+    for metric, by_label in grouped.items():
+        real = None
+        for k in ("real", "baseline"):
+            if k in by_label and isinstance(by_label[k], dict) and by_label[k].get("count"):
+                real = by_label[k]
+                break
+        if not real:
+            continue
+        real_avg = float(real.get("avg") or 0.0)
+        real_peak = float(real.get("peak") or 0.0)
+        real_trough = float(real.get("trough") or 0.0)
+        real_last = float(real.get("last") or 0.0)
+
+        for lbl, summ in by_label.items():
+            if lbl in ("real", "baseline"):
+                continue
+            if not isinstance(summ, dict) or not summ.get("count"):
+                continue
+            try:
+                avg = float(summ.get("avg") or 0.0)
+                peak = float(summ.get("peak") or 0.0)
+                trough = float(summ.get("trough") or 0.0)
+                last = float(summ.get("last") or 0.0)
+            except Exception:
+                continue
+
+            def _pct(v: float, base: float) -> float:
+                denom = base if abs(base) > 1e-6 else 1.0
+                return (v - base) / denom * 100.0
+
+            summ["avg_vs_real_pct"] = round(_pct(avg, real_avg), 2)
+            summ["peak_vs_real_pct"] = round(_pct(peak, real_peak), 2)
+            summ["trough_vs_real_pct"] = round(_pct(trough, real_trough), 2)
+            summ["last_vs_real_pct"] = round(_pct(last, real_last), 2)
+
+    return out
+
+
+def generate_insights_from_snapshot(
+    scope: str,
+    snapshot: Dict[str, Any],
+    zone_id: Optional[str] = None,
+    scenario: Optional[str] = None,
+) -> Dict[str, Any]:
+    scope = (scope or "dashboard").lower()
+    scope = (
+        scope if scope in {"dashboard", "growth", "energy", "traffic"} else "dashboard"
+    )
+    view = None
+    if isinstance(snapshot, dict):
+        raw_view = snapshot.get("active_view")
+        if raw_view is not None:
+            view = str(raw_view)
+
+    summary = _prepare_snapshot_data(scope, snapshot)
+    prompt = _build_prompt(scope, summary, zone_id=zone_id, scenario=scenario, view=view)
+
+    # Cache key includes full snapshot payload so insights update when displayed data changes.
+    cache_payload = {
+        "zone_id": zone_id,
+        "scenario": scenario,
+        "view": view,
+        "snapshot": snapshot,
+        "summary": summary,
+    }
+    cache_json = json.dumps(cache_payload, sort_keys=True, default=str)
+    cache_key = (
+        f"advisory_snapshot:{scope}:{hashlib.sha256(cache_json.encode('utf-8')).hexdigest()}"
+    )
+    cached = _cache_get(cache_key)
+    if cached:
+        ts, text, model = cached
+        return {
+            "text": text,
+            "model": model,
+            "cached": True,
+            "generated_at": dt.datetime.utcfromtimestamp(ts).isoformat() + "Z",
+            "fallback": False,
+        }
+
+    gen = HFTextGenerator()
+    text = gen.generate(prompt)
+    now_iso = dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
+    is_fallback = text.strip().startswith("Advisory engine is temporarily unavailable;")
+    if not is_fallback:
+        _cache_set(cache_key, text, gen.model)
+
     return {
         "text": text,
         "model": gen.model,

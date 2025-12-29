@@ -189,6 +189,13 @@ def simulate_energy(
 
     # Normalize to 0-23 and rotate if requested.
     items = list(base_items)
+    for idx, it in enumerate(items):
+        if it.get("hour") is None:
+            it["hour"] = idx
+        if it.get("demand_mwh") is None:
+            it["demand_mwh"] = it.get("predicted")
+            if it.get("demand_mwh") is None:
+                it["demand_mwh"] = it.get("actual")
     if peak_shift % 24 != 0 and len(items) == 24:
         # sort by hour, rotate list, and then reassign hours 0-23
         items = sorted(items, key=lambda x: int(x.get("hour", 0)))

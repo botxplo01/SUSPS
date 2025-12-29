@@ -1,6 +1,6 @@
 // @author: David Lameck
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AreaBadge } from "../components/AreaBadge";
 import { ModeToggle } from "../components/ModeToggle";
 import { DescriptionSection } from "../components/DescriptionSection";
@@ -137,7 +137,6 @@ export function UrbanGrowthPage({
   const zoneId = selectedArea ? selectedArea.name : null;
   const scenarioLabel = getGrowthScenarioLabel(scenarioId);
   const scenarioClass = getGrowthScenarioClass(scenarioId);
-  const { insights, loading, error } = useAdvisory("growth", zoneId, scenarioId);
   const { points: growthPoints, loading: growthLoading } = useGrowthSeries(
     selectedArea ? selectedArea.id : null,
   );
@@ -160,6 +159,55 @@ export function UrbanGrowthPage({
     },
   );
   const basePoints = growthPoints;
+
+  const advisorySnapshot = useMemo(() => {
+    const series: { metric: "growth"; label: string; points: ChartPoint[] }[] = [];
+
+    if (basePoints.length) {
+      series.push({ metric: "growth", label: "Real", points: basePoints });
+    }
+    if (
+      mode === "REAL" &&
+      predictedGrowth.length === basePoints.length &&
+      predictedGrowth.length
+    ) {
+      series.push({ metric: "growth", label: "Predicted", points: predictedGrowth });
+    }
+    if (
+      mode === "SIMULATE" &&
+      simulateRun > 0 &&
+      simulateGrowthPoints.length === basePoints.length
+    ) {
+      series.push({
+        metric: "growth",
+        label: "Simulated",
+        points: simulateGrowthPoints,
+      });
+    }
+    if (optimize && optimalGrowth.length === basePoints.length && optimalGrowth.length) {
+      series.push({ metric: "growth", label: "Optimal", points: optimalGrowth });
+    }
+
+    return {
+      active_view: mode,
+      series,
+    };
+  }, [
+    basePoints,
+    mode,
+    predictedGrowth,
+    simulateRun,
+    simulateGrowthPoints,
+    optimize,
+    optimalGrowth,
+  ]);
+
+  const { insights, loading, error } = useAdvisory(
+    "growth",
+    zoneId,
+    scenarioId,
+    advisorySnapshot,
+  );
 
   useEffect(() => {
     if (!onRegisterExporter) return;
