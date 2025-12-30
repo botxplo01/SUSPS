@@ -483,6 +483,9 @@ export function TrafficPage({
                 {typeof livePayload.meta.cached === "boolean"
                   ? ` (cached: ${livePayload.meta.cached ? "yes" : "no"})`
                   : ""}
+                {typeof livePayload.meta.cache_age_seconds === "number"
+                  ? ` (age: ${Math.round(livePayload.meta.cache_age_seconds)}s)`
+                  : ""}
               </p>
             )}
           </div>
@@ -491,7 +494,7 @@ export function TrafficPage({
             onClick={() => {
               setLiveLoading(true);
               setLiveError(null);
-              fetchJson<any>("/traffic/live", { fresh: 1 })
+              fetchJson<any>("/traffic/live", { fresh: 1, t: Date.now() })
                 .then((data) => setLivePayload(data))
                 .catch((err: unknown) => {
                   setLivePayload(null);

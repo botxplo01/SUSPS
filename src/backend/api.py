@@ -102,8 +102,28 @@ def _get_tomtom_live_points_payload(force_refresh: bool = False) -> Dict[str, An
     ):
         cached_payload = _TRAFFIC_LIVE_POINTS_CACHE.get("payload")
         if isinstance(cached_payload, dict) and cached_payload.get("points"):
-            meta = cached_payload.get("meta") if isinstance(cached_payload.get("meta"), dict) else {}
-            return {**cached_payload, "meta": {**meta, "cached": True, "served_at": now.isoformat()}}
+            meta = (
+                cached_payload.get("meta")
+                if isinstance(cached_payload.get("meta"), dict)
+                else {}
+            )
+            age_sec = None
+            try:
+                if isinstance(cached_at, datetime):
+                    age_sec = max(0.0, float((now - cached_at).total_seconds()))
+            except Exception:
+                age_sec = None
+            return {
+                **cached_payload,
+                "meta": {
+                    **(meta or {}),
+                    "cached": True,
+                    "cache_age_seconds": age_sec,
+                    "ttl_seconds": float(_TRAFFIC_LIVE_POINTS_TTL_SECONDS),
+                    "request_id": secrets.token_hex(4),
+                    "served_at": now.isoformat(),
+                },
+            }
 
     lat, lon = _city_coords()
     steps = [(-0.02, -0.02), (-0.02, 0.02), (0.0, 0.0), (0.02, -0.02), (0.02, 0.02)]
@@ -164,10 +184,14 @@ def _get_tomtom_live_points_payload(force_refresh: bool = False) -> Dict[str, An
             "source": "tomtom_flow",
             "cached": False,
             "generated_at": now.isoformat(),
+            "served_at": now.isoformat(),
             "samples_used": int(len(points)),
             "avg_congestion_ratio": avg_ratio,
             "avg_current_speed": avg_cur,
             "avg_free_flow_speed": avg_free,
+            "cache_age_seconds": 0.0,
+            "ttl_seconds": float(_TRAFFIC_LIVE_POINTS_TTL_SECONDS),
+            "request_id": secrets.token_hex(4),
         },
     }
     _TRAFFIC_LIVE_POINTS_CACHE["at"] = now
@@ -938,9 +962,25 @@ def traffic_live(fresh: int = Query(0)):
             status_code=503,
         )
 
-    payload = _get_tomtom_live_points_payload(force_refresh=(fresh == 1))
+    force_refresh = fresh == 1
+    payload = _get_tomtom_live_points_payload(force_refresh=force_refresh)
+    try:
+        meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+        payload["meta"] = {
+            **(meta or {}),
+            "force_refresh": bool(force_refresh),
+            "served_at": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception:
+        pass
     _append_traffic_snapshot(payload)
-    return payload
+    return JSONResponse(
+        payload,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 @app.get("/")
