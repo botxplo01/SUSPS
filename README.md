@@ -1,4 +1,4 @@
-# SUSPS: Smart Urban Simulation and Prediction System by David Lameck
+# SUSPS: Smart Urban Simulation and Prediction System by Lameck David Musumpuka
 
 **SUSPS** is a sophisticated, AI-driven platform designed for urban planning and resource management in the context of rapidly growing cities, with an initial focus on Lusaka, Zambia. The system provides predictive insights into urban growth, energy consumption, and traffic patterns, enabling city planners, policymakers, and researchers to make data-informed decisions.
 
@@ -59,20 +59,24 @@ The SUSPS platform is built on a decoupled, service-oriented architecture, which
 
 To set up a local development environment, you will need to run the frontend and backend services separately.
 
-### Prerequisites
+### PREREQUISITES
 
 - Python 3.11
-- Node.js 18 or later
-- PostgreSQL 14 or later (required, for database-backed features)
+- Node.js 18+
+- PostgreSQL 14+ (required)
+- OpenAQ API key (can be obtained for free: https://docs.openaq.org/docs)
+- HuggingFace API key and 'meta-llama/Llama-3.1-8B-Instruct' license accepted (can be obtained for free: https://huggingface.co/)
+- TomTom API key (can be obtained for free: https://developer.tomtom.com/documentation)
+- Openweather API key (can be obtained for free: https://openweathermap.org/api)
 
 ### BACKEND SETUP
 
 1. **Create a virtual environment and install dependencies**:
 
     ```bash
-    python -m venv .venv
-    source .venv\Scripts\activate  # On Unix-like systems, use `.venv/bin/activate`
-    pip install -r requirements.txt
+    > python -m venv .venv
+    > .venv\scripts\activate  # On Unix-like systems, use `.venv/bin/activate`
+    > pip install -r requirements.txt
     ```
 
 2. **Setup the database (required)**
@@ -85,27 +89,27 @@ To set up a local development environment, you will need to run the frontend and
        The schema is defined in `src/backend/db/susps_schema_dump.sql`. It can be created by running `scripts/create_schema.py` as a script:
 
        ``` bash
-       python -m scripts/create_schema.py
+       > python -m scripts/create_schema.py
        ```
 
 3. **Run the pipeline locally:**
 
     ```bash
-    python -m src.pipeline.ingest
-    python -m src.pipeline.preprocess
+    > python -m src.pipeline.ingest
+    > python -m src.pipeline.preprocess
     ```
 
 4. **Seed the database**:
        Run the seeding script to populate the database with processed data:
 
     ```bash
-    python -m src.backend.db.seed_from_processed
+    > python -m src.backend.db.seed_from_processed
     ```
 
 5. **Run the backend server**:
 
     ```bash
-    uvicorn src.backend.api:app --reload
+    > uvicorn src.backend.api:app --reload
     ```
 
     The API will be available at `http://127.0.0.1:8000`, and the interactive API documentation (Swagger UI) can be accessed at `http://127.0.0.1:8000/docs`.
@@ -115,33 +119,33 @@ To set up a local development environment, you will need to run the frontend and
 1. **Navigate to the frontend directory**:
 
     ```bash
-    cd src/frontend
+    > cd src/frontend
     ```
 
 2. **Install dependencies**:
 
     ```bash
-    npm install
+    > npm install
     ```
 
 3. **Run the frontend development server**:
 
     ```bash
-    npm run dev
+    > npm run dev
     ```
 
     The frontend will be available at `http://localhost:5173`.
 
 ## Deployment
 
-The SUSPS platform is deployed on Render, with the frontend and backend running as separate services.
+The SUSPS platform is deployed on Render, with the frontend, backend, and Render-managed PostgreSQL database running as separate services.
 
 - **Frontend**: `https://susps-main.onrender.com`
 - **Backend**: `https://susps-web.onrender.com`
 
-The services are on a free tier and may spin down due to inactivity. The frontend is configured to automatically send a "wake-up" request to the backend upon loading to ensure a seamless user experience.
+Note that all services (backend, frontend, and Render-managed PostgreSQL database) are on a free tier and may spin down due to inactivity. The frontend is configured to automatically send a "wake-up" request to the backend upon loading to ensure a seamless user experience. Note that it may take 3-8 minutes for the system to fully startup.
 
-Please note that due to the use of a free plan, the service experiences longer startup times. After 50 seconds of inactivity, the system is automatically spun down, and it might need to take at least 5-8 minutes to fully startup from a cold start. If starting from a cold start, you are advised to attempt to sign in at least 3-4 times after the 5-8 minute threshold after the first attempt, making sure you make the second attempt at least after 4 minutes after the first.
+After 50 seconds of inactivity, the system is automatically spun down, and it might take at least 5-8 minutes to fully startup from a cold start. If starting from a cold start. You are advised to attempt to sign in at least 3-4 times after the 5-8 minute threshold after the first attempt, making sure you make the second attempt at least after 4 minutes after the first.
 
 ## Usage
 
@@ -161,4 +165,4 @@ python -m src.pipeline.preprocess
 The pipeline reads raw data and writes processed artifacts to the `data/` directory.
 
 ---
-*This project is for educational purposes as part of a Software Engineering Final Year Project at Cavendish University 2025.*
+*This project is for educational purposes by Lameck David Musumpuka as part of a Software Engineering Final Year Project at Cavendish University 2025.*
