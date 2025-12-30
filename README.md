@@ -63,26 +63,46 @@ To set up a local development environment, you will need to run the frontend and
 
 - Python 3.11
 - Node.js 18 or later
-- PostgreSQL 14 or later (optional, for database-backed features)
+- PostgreSQL 14 or later (required, for database-backed features)
 
-### Backend Setup
+### BACKEND SETUP
 
-1. **Clone the repository**:
-
-    ```bash
-    git clone https://github.com/your-username/SUSPS.git
-    cd SUSPS
-    ```
-
-2. **Create a virtual environment and install dependencies**:
+1. **Create a virtual environment and install dependencies**:
 
     ```bash
     python -m venv .venv
-    source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
+    source .venv\Scripts\activate  # On Unix-like systems, use `.venv/bin/activate`
     pip install -r requirements.txt
     ```
 
-3. **Run the backend server**:
+2. **Setup the database (required)**
+   1. **Create a PostgreSQL user and a database.**
+
+   2. **Configure the database connection**:
+       Set the `USE_LOCAL_DB` and `LOCAL_DATABASE_URL` environment variables in a `.env` file in the root of the project.
+
+   3. **Apply the database schema**:
+       The schema is defined in `src/backend/db/susps_schema_dump.sql`. It can be created by running `scripts/create_schema.py` as a script:
+
+       ``` bash
+       python -m scripts/create_schema.py
+       ```
+
+3. **Run the pipeline locally:**
+
+    ```bash
+    python -m src.pipeline.ingest
+    python -m src.pipeline.preprocess
+    ```
+
+4. **Seed the database**:
+       Run the seeding script to populate the database with processed data:
+
+    ```bash
+    python -m src.backend.db.seed_from_processed
+    ```
+
+5. **Run the backend server**:
 
     ```bash
     uvicorn src.backend.api:app --reload
@@ -90,7 +110,7 @@ To set up a local development environment, you will need to run the frontend and
 
     The API will be available at `http://127.0.0.1:8000`, and the interactive API documentation (Swagger UI) can be accessed at `http://127.0.0.1:8000/docs`.
 
-### Frontend Setup
+### FRONTEND SETUP
 
 1. **Navigate to the frontend directory**:
 
@@ -112,25 +132,6 @@ To set up a local development environment, you will need to run the frontend and
 
     The frontend will be available at `http://localhost:5173`.
 
-### Database Setup (Optional)
-
-For features that require a database, you can set up a local PostgreSQL instance.
-
-1. **Create a PostgreSQL database and user.**
-
-2. **Configure the database connection**:
-    Set the `USE_LOCAL_DB` and `LOCAL_DATABASE_URL` environment variables in a `.env` file in the root of the project.
-
-3. **Apply the database schema**:
-    The schema is defined in `src/backend/db/susps_schema_dump.sql`.
-
-4. **Seed the database**:
-    Run the seeding script to populate the database with processed data:
-
-    ```bash
-    python -m src.backend.db.seed_from_processed
-    ```
-
 ## Deployment
 
 The SUSPS platform is deployed on Render, with the frontend and backend running as separate services.
@@ -138,9 +139,9 @@ The SUSPS platform is deployed on Render, with the frontend and backend running 
 - **Frontend**: `https://susps-main.onrender.com`
 - **Backend**: `https://susps-web.onrender.com`
 
-The backend service is on a free tier and may spin down due to inactivity. The frontend is configured to automatically send a "wake-up" request to the backend upon loading to ensure a seamless user experience.
+The services are on a free tier and may spin down due to inactivity. The frontend is configured to automatically send a "wake-up" request to the backend upon loading to ensure a seamless user experience.
 
-Please note that due to the use of a free plan, the service experiences longer startup times. After 50 seconds of inactivity, the system is automatically spun down, and it might need to take at least 3-5 minutes to fully startup from a cold start. If starting from a cold start, you are advised to attempt to sign in at least 3-4 times within the 3 minute threshold after the first attempt, making sure you make the second attempt at least after 3 minutes after the first.
+Please note that due to the use of a free plan, the service experiences longer startup times. After 50 seconds of inactivity, the system is automatically spun down, and it might need to take at least 5-8 minutes to fully startup from a cold start. If starting from a cold start, you are advised to attempt to sign in at least 3-4 times after the 5-8 minute threshold after the first attempt, making sure you make the second attempt at least after 4 minutes after the first.
 
 ## Usage
 
@@ -160,4 +161,4 @@ python -m src.pipeline.preprocess
 The pipeline reads raw data and writes processed artifacts to the `data/` directory.
 
 ---
-*This project is for educational purposes as part of a Final Year Software Engineering degree.*
+*This project is for educational purposes as part of a Software Engineering Final Year Project at Cavendish University 2025.*
