@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 interface InsightsSectionProps {
   children?: React.ReactNode;
@@ -27,3 +27,4 @@ export function InsightsSection({ children }: InsightsSectionProps) {
     </section>
   );
 }
+

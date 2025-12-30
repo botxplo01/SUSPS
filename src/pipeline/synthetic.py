@@ -1,9 +1,9 @@
-# @author: David Lameck
+﻿# @author: Lameck David Musumpuka
 
-"""Small synthetic data generators used to keep the pipeline runnable offline.
+"""Synthetic data generators.
 
-Currently provides a simple demographics generator plus a helper to persist the
-result under data/<CITY>/processed/.
+These utilities provide small, deterministic datasets used when external raw
+inputs are unavailable.
 """
 
 from __future__ import annotations
@@ -45,3 +45,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

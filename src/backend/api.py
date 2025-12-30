@@ -1,4 +1,4 @@
-# @author: David Lameck
+﻿# @author: Lameck David Musumpuka
 
 """FastAPI application for the Smart Urban Simulation and Prediction System (SUSPS).
 
@@ -29,7 +29,7 @@ from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 from pathlib import Path
 import json
 
-# Load .env in local dev so API picks up LOCAL_DATABASE_URL and local paths
+# Load .env in local development so the API can pick up LOCAL_DATABASE_URL and local paths.
 try:  # pragma: no cover - optional
     from dotenv import load_dotenv
 
@@ -52,7 +52,7 @@ from src.models.traffic import (
     daily_profile_from_processed as traffic_profile_from_processed,
 )
 from src.pipeline.ingest import fetch_traffic as ingest_fetch_traffic
-from src.backend.advisory import (
+from src.backend.advisory.engine import (
     generate_insights_from_scope,
     generate_insights_from_snapshot,
 )
@@ -1708,7 +1708,7 @@ def run_simulation(payload: SimulationRunPayload):
 
     This endpoint:
     - Optionally persists a SimulationInput record when the DB is enabled.
-    - Uses current REAL-mode outputs as the base (DB → processed → synthetic).
+    - Uses current REAL-mode outputs as the base (DB â†’ processed â†’ synthetic).
     - Applies simple, deterministic adjustments via simulation helpers.
     """
 
@@ -1928,12 +1928,10 @@ def _build_pdf(payload: ExportPayload) -> bytes:
 
         # Helper to render AI Analysis & Insights in a clean, markdown-aware layout
         def _render_insights(text: str) -> None:
-            """Render advisory markdown-ish text into headings, paragraphs, and lists.
+            """Render advisory markdown-like text into PDF primitives.
 
-            Mirrors the frontend's FormattedInsights behaviour:
-            - Drops placeholder "Insights" headings and underline rows.
-            - Normalises inline markdown (###, **bold**, lists) into PDF headings and lists.
-            - Removes any embedded SUSPS footer line (PDF footer handles branding).
+            Keeps the PDF output aligned with the frontend renderer by
+            normalizing headings/lists and stripping redundant boilerplate.
             """
 
             import re
@@ -1988,7 +1986,7 @@ def _build_pdf(payload: ExportPayload) -> bytes:
                 if not line:
                     continue
 
-                # Drop embedded SUSPS footer and placeholder "Insights" headings.
+                # Drop embedded SUSPS footer and the default "Insights" heading.
                 if "Smart Urban Simulation and Prediction System (SUSPS)" in line:
                     continue
                 lower = line.lower()
@@ -2108,9 +2106,8 @@ def _build_pdf(payload: ExportPayload) -> bytes:
                 try:
                     import base64
 
-                    # NOTE: avoid shadowing the outer `payload` variable (the
-                    # ExportPayload) so that footer_text and other metadata
-                    # remain accessible after this block.
+                    # Avoid shadowing the outer ExportPayload so footer_text and
+                    # other metadata remain accessible after this block.
                     data_url = img_data
                     # Support data URLs like "data:image/png;base64,...".
                     if "," in data_url:
@@ -2213,7 +2210,7 @@ def _build_pdf(payload: ExportPayload) -> bytes:
 
     footer_text = (
         payload.footer_text
-        or "Smart Urban Simulation and Prediction System (SUSPS) — © 2025 Developed by David Lameck."
+        or "Smart Urban Simulation and Prediction System (SUSPS) â€” Â© 2025 Developed by David Lameck."
     )
 
     def _footer(canvas, doc):  # type: ignore[override]
@@ -2428,7 +2425,7 @@ def advisory(
 ):
     """
     Return markdown insights for a given scope: dashboard|growth|energy|traffic.
-    Uses recent data from existing endpoints (DB → processed → synthetic).
+    Uses recent data from existing endpoints (DB â†’ processed â†’ synthetic).
     """
     scope_l = (scope or "dashboard").lower()
     # Preload bundles once
@@ -2569,3 +2566,4 @@ def advisory_batch(
                 "fallback": res.get("fallback", False),
             }
     return {"results": results}
+

@@ -1,4 +1,4 @@
-# @author: David Lameck
+# @author: Lameck David Musumpuka
 
 """API tests for /simulate/run covering all-modules and growth-only modes."""
 

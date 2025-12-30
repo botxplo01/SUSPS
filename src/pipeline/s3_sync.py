@@ -1,4 +1,4 @@
-# @author: David Lameck
+﻿# @author: Lameck David Musumpuka
 
 """Utility functions for syncing data/<CITY>/raw/ with an S3 bucket.
 
@@ -209,3 +209,4 @@ if __name__ == "__main__":  # pragma: no cover - utility CLI
     if args.pull:
         n = sync_raw_from_s3()
         print(f"Downloaded {n} objects")
+

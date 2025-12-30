@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 interface AreaBadgeProps {
   name: string;
@@ -14,3 +14,4 @@ export function AreaBadge({ name }: AreaBadgeProps) {
 
   return <span className={`${baseClasses} ${colorClasses}`}>Area: {name}</span>;
 }
+

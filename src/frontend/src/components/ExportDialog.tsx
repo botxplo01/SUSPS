@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 import type React from "react";
 
@@ -64,3 +64,4 @@ export function ExportDialog({ isOpen, onClose, onConfirm }: ExportDialogProps) 
     </div>
   );
 }
+

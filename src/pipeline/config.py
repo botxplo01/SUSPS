@@ -1,4 +1,4 @@
-# @author: David Lameck
+﻿# @author: Lameck David Musumpuka
 
 """Central configuration for the SUSPS data pipeline.
 
@@ -13,7 +13,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
 
-# Optionally load environment variables from a .env file if python-dotenv is installed
+# Load environment variables from a .env file when python-dotenv is available.
 try:  # pragma: no cover - optional dependency
     from dotenv import load_dotenv
 
@@ -21,7 +21,7 @@ try:  # pragma: no cover - optional dependency
 except Exception:
     pass
 
-# Project root = repo root (src/pipeline -> src -> root)
+# Project root = repo root (src/pipeline -> src -> repo)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
 # Optional city scoping: put data under data/<CITY>/{raw,processed}
@@ -68,13 +68,13 @@ def ensure_dirs() -> None:
 
 @dataclass(frozen=True)
 class Defaults:
-    # Note: Region defaults are placeholders; use .env paths for actual data
+    # Region defaults should be overridden via environment configuration.
     region: str = "Zambia"
     seed: int = 42
     worldpop_country_code: str = "ZMB"
 
 
-# Helper to get an optional Path from environment
+# Helper to read an optional Path from environment
 def _env_path(name: str) -> Optional[Path]:
     val = os.getenv(name)
     return Path(val) if val else None
@@ -115,3 +115,4 @@ TOMTOM_API_KEY: Optional[str] = os.getenv("TOMTOM_API_KEY")
 WEATHER_PROVIDER: str = os.getenv("WEATHER_PROVIDER", "openweather")
 # Traffic provider preference: 'tomtom' (default) or 'synthetic'
 TRAFFIC_PROVIDER: str = os.getenv("TRAFFIC_PROVIDER", "tomtom")
+

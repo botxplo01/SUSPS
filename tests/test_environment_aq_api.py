@@ -1,4 +1,4 @@
-# @author: David Lameck
+# @author: Lameck David Musumpuka
 
 """API tests for environment and air-quality feature endpoints."""
 

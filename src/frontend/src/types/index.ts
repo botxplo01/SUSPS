@@ -1,4 +1,4 @@
-// @author: David Lameck
+﻿// @author: Lameck David Musumpuka
 
 /** Shared frontend types for areas, charts, exports, and auth. */
 export type Mode = "REAL" | "SIMULATE";
@@ -85,3 +85,4 @@ export interface AuthUser {
 export interface ChartExportHandle {
   capturePng: () => Promise<string | null>;
 }
+

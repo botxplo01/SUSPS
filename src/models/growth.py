@@ -1,4 +1,4 @@
-# @author: David Lameck
+﻿# @author: Lameck David Musumpuka
 
 """Population growth helpers for REAL and SIMULATE modes.
 
@@ -100,7 +100,7 @@ def predict_from_processed(
     years: int = 6,
     annual_rate: float = 0.03,
 ) -> List[Dict[str, int]]:
-    """Placeholder: if processed data exists, derive a base population proxy.
+    """Derive a population baseline from processed artifacts when available.
 
     Uses `data/<CITY>/processed/worldpop_features.csv` pop_share sum as a lightweight
     proxy for base scaling; falls back to predict_growth otherwise.
@@ -126,3 +126,4 @@ def predict_from_processed(
             end_year=2024 + years,
             annual_rate=annual_rate,
         )
+

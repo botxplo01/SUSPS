@@ -1,4 +1,4 @@
-// @author: David Lameck
+﻿// @author: Lameck David Musumpuka
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AreaBadge } from "../components/AreaBadge";
@@ -38,7 +38,7 @@ type GrowthExportTarget =
 
 /** Footer text used for Urban Growth PDF/CSV exports. */
 const EXPORT_FOOTER_TEXT =
-  "Smart Urban Simulation and Prediction System (SUSPS) — © 2025 Developed by David Lameck.";
+  "Smart Urban Simulation and Prediction System (SUSPS) â€” Â© 2025 Developed by David Lameck.";
 
 function getGrowthScenarioLabel(id: string): string {
   switch (id) {
@@ -328,7 +328,7 @@ export function UrbanGrowthPage({
                       String(p.x),
                       Math.round(p.y).toString(),
                     ])
-                  : [["—", "—"]],
+                  : [["â€”", "â€”"]],
             },
           ];
 
@@ -648,7 +648,7 @@ export function UrbanGrowthPage({
                   ),
                 ];
               })
-            : [["—", "—"]]
+            : [["â€”", "â€”"]]
         }
       />
 
@@ -740,3 +740,4 @@ export function UrbanGrowthPage({
     </div>
   );
 }
+

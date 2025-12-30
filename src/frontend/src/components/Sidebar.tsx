@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 import { useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
@@ -109,7 +109,6 @@ export function Sidebar({
 
   const renderNavIcon = (path: string) => {
     if (path.startsWith("/dashboard")) {
-      // Home icon
       return (
         <svg
           viewBox="0 0 24 24"
@@ -124,7 +123,6 @@ export function Sidebar({
       );
     }
     if (path.startsWith("/energy")) {
-      // Energy: lightning bolt in a thin circle
       return (
         <svg
           viewBox="0 0 24 24"
@@ -147,7 +145,6 @@ export function Sidebar({
       );
     }
     if (path.startsWith("/urban-growth")) {
-      // Urban growth: population + upward trend
       return (
         <svg
           viewBox="0 0 24 24"
@@ -171,7 +168,6 @@ export function Sidebar({
       );
     }
     if (path.startsWith("/traffic")) {
-      // Traffic: car icon
       return (
         <svg
           viewBox="0 0 24 24"
@@ -195,7 +191,6 @@ export function Sidebar({
         </svg>
       );
     }
-    // Fallback: simple circle
     return (
       <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
         <circle
@@ -217,7 +212,6 @@ export function Sidebar({
       } md:translate-x-0 ${isCollapsed ? "w-64 md:w-20" : "w-64 md:w-64"}`}
     >
       <div className="relative flex h-full w-full flex-col">
-        {/* Brand / logo */}
         <div className="px-4 pb-2 pt-6">
           {isCollapsed ? (
             <div className="flex items-center justify-center">
@@ -230,7 +224,6 @@ export function Sidebar({
           )}
         </div>
 
-        {/* Collapsed: search icon that expands sidebar */}
         {isCollapsed && (
           <div className="mt-3 hidden items-center justify-center md:flex">
             <button
@@ -407,3 +400,4 @@ export function Sidebar({
     </aside>
   );
 }
+

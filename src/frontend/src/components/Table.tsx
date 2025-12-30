@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 import type React from "react";
 
@@ -69,3 +69,4 @@ export function Table({ title, columns, rows, onExport }: TableProps) {
     </div>
   );
 }
+

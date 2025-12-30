@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -36,7 +36,6 @@ function gradientForPath(pathname: string, scrolled: boolean): string {
 
 function renderHeaderIcon(pathname: string) {
   if (pathname.startsWith("/dashboard")) {
-    // Home icon
     return (
       <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
         <path
@@ -47,7 +46,6 @@ function renderHeaderIcon(pathname: string) {
     );
   }
   if (pathname.startsWith("/energy")) {
-    // Energy: lightning bolt in a circle
     return (
       <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
         <circle
@@ -63,7 +61,6 @@ function renderHeaderIcon(pathname: string) {
     );
   }
   if (pathname.startsWith("/urban-growth")) {
-    // Urban growth: population + upward trend
     return (
       <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
         <circle cx="7" cy="9" r="2" className="fill-current" />
@@ -83,7 +80,6 @@ function renderHeaderIcon(pathname: string) {
     );
   }
   if (pathname.startsWith("/traffic")) {
-    // Traffic: car icon
     return (
       <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
         <path
@@ -330,3 +326,4 @@ export function Header({
     </header>
   );
 }
+

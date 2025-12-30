@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 import type { ReactNode } from "react";
 
@@ -43,3 +43,4 @@ export function AuthLayout({ children, title, subtitle, description }: AuthLayou
     </div>
   );
 }
+

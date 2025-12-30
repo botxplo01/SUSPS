@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 import { useEffect, useState } from "react";
 import { fetchJson, postJson } from "../api";
@@ -107,3 +107,4 @@ export function useAdvisory(
 
   return { insights, loading, error, meta };
 }
+

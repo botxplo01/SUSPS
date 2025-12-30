@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { AuthUser } from "../types";
@@ -70,3 +70,4 @@ export function useAuth(): AuthContextValue {
   }
   return ctx;
 }
+

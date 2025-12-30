@@ -1,4 +1,4 @@
-// @author: David Lameck
+﻿// @author: Lameck David Musumpuka
 
 import { useState, useEffect, useCallback } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
@@ -160,3 +160,4 @@ export default function App() {
     </RequireAuth>
   );
 }
+

@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 export function Footer() {
   return (
@@ -10,3 +10,4 @@ export function Footer() {
     </footer>
   );
 }
+

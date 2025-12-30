@@ -1,4 +1,4 @@
-# @author: David Lameck
+﻿# @author: Lameck David Musumpuka
 
 """Traffic volume helpers used by the /traffic endpoints.
 
@@ -64,3 +64,4 @@ def daily_profile_from_processed(
         ]
     except Exception:
         return []
+

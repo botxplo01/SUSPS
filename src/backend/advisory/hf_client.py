@@ -1,17 +1,18 @@
-"""Thin Hugging Face client wrapper used by the SUSPS backend.
+﻿"""Thin Hugging Face client wrapper used by the SUSPS backend.
 
 Handles token loading, model selection, and robust fallbacks so that
 advisory and time-series helpers can request text generations without
 embedding Hugging Face API details.
 """
-# @author: David Lameck
+# @author: Lameck David Musumpuka
 
 import os
 import sys
 from typing import Optional
 import requests
 
-# Ensure .env is loaded for tokens in contexts where the API module didn't run load_dotenv yet
+# Load .env here as well so tokens are available when this module is imported
+# outside of the main API entry point.
 try:  # pragma: no cover - optional
     from dotenv import load_dotenv
 
@@ -26,13 +27,13 @@ except Exception:  # pragma: no cover - optional dependency
 
 
 _DEFAULT_MODELS = [
-    # default per project decision (license accepted)
+    # Preferred default
     "meta-llama/Llama-3.1-8B-Instruct",
-    # alternative generalist
+    # General-purpose alternative
     "HuggingFaceH4/zephyr-7b-beta",
-    # seq2seq fallback (text2text)
+    # Seq2seq fallback (text2text)
     "google/flan-t5-large",
-    # tiny fallback to avoid timeouts
+    # Small fallback to reduce latency/timeouts
     "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
 ]
 
@@ -86,14 +87,14 @@ class HFTextGenerator:
 
     def _is_conversational(self, model_name: str) -> bool:
         name = (model_name or "").lower()
-        # Heuristic: Llama 3.x instruct models expose chat-style interfaces
+        # Heuristic: Llama instruct models expose chat-style interfaces.
         force = (
             os.getenv("HF_FORCE_TASK", "").strip(" '\"\t\n\r").lower()
             == "conversational"
         )
         return force or ("meta-llama" in name or "llama-3" in name)
 
-    # --- Chat Completions helpers (preferred for Llama Instruct) ---
+    # Chat Completions helpers (preferred for Llama instruct models).
     def _has_chat_completions(self) -> bool:
         try:
             chat = getattr(self._client, "chat", None)
@@ -181,7 +182,7 @@ class HFTextGenerator:
     def generate(
         self, prompt: str, max_new_tokens: int = 400, temperature: float = 0.2
     ) -> str:
-        # Try primary then fallback, with small backoff per model
+        # Try configured model then fallbacks, with limited retries/backoff per model.
         models = [self.model] + [m for m in _DEFAULT_MODELS if m != self.model]
         for m in models:
             tries = 3
@@ -191,7 +192,7 @@ class HFTextGenerator:
                     if not self._client and not self._token:
                         break
                     if self._is_text2text(m):
-                        # Use text2text-generation for seq2seq models like FLAN-T5 via Inference API
+                        # Use text2text-generation for seq2seq models via the Inference API.
                         if self._token:
                             api_model = m.split(":", 1)[0]
                             r = requests.post(
@@ -226,12 +227,12 @@ class HFTextGenerator:
                                 if out and out.strip():
                                     return out
                     elif self._is_conversational(m):
-                        # Prefer Chat Completions (router) for Llama-style instruct models unless forced to 'conversational'
+                        # Prefer chat completions routing for instruct models unless explicitly forced.
                         if (
                             os.getenv("HF_FORCE_TASK", "").strip(" '\"\t\n\r").lower()
                             == "conversational"
                         ):
-                            # Directly use classic HF conversational task via Inference API
+                            # Use the classic HF conversational task via the Inference API.
                             if self._token:
                                 api_model = m.split(":", 1)[0]
                                 r = requests.post(
@@ -265,7 +266,7 @@ class HFTextGenerator:
                                 if out.strip():
                                     return out
                         else:
-                            # Try huggingface_hub Chat Completions first (may have token via HF config), then router
+                            # Try huggingface_hub chat completions first, then the router endpoint.
                             out = self._chat_complete_hfhub(
                                 prompt, m, max_new_tokens, temperature
                             )
@@ -275,7 +276,7 @@ class HFTextGenerator:
                                 )
                             if out and out.strip():
                                 return out
-                        # Fallback to classic HF conversational task (last resort) via Inference API
+                        # Last resort: classic HF conversational task via the Inference API.
                         if self._token:
                             api_model = m.split(":", 1)[0]
                             r = requests.post(
@@ -323,7 +324,7 @@ class HFTextGenerator:
                             return out if isinstance(out, str) else str(out)
                 except Exception:
                     if attempt < tries - 1:
-                        # backoff with jitter
+                        # Backoff with jitter.
                         import random
                         import time as _t
 
@@ -332,9 +333,10 @@ class HFTextGenerator:
                         continue
                     else:
                         break
-        # Fallback: minimal deterministic advisory text
+        # Fallback: deterministic advisory text.
         return (
             f"{FALLBACK_PREFIX}\n\n"
             "Key trends: see recent peaks, dips, and changes; prioritize mitigation for sustained increases in congestion, demand spikes, and AQI elevations.\n"
             "Actions: optimize signal timing on peak corridors, stagger energy loads during evening peaks, increase public transit headways during commute windows, and prepare heat-health messaging during forecasted hot days."
         )
+

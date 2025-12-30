@@ -1,4 +1,4 @@
-# @author: David Lameck
+﻿# @author: Lameck David Musumpuka
 
 """Helpers for querying OpenStreetMap via the Overpass API.
 
@@ -249,3 +249,4 @@ def save_geojson(data: Dict[str, Any], path: str | os.PathLike[str]) -> None:
 
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
+

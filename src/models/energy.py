@@ -1,4 +1,4 @@
-# @author: David Lameck
+﻿# @author: Lameck David Musumpuka
 
 """Energy model helpers backing the /energy endpoints.
 
@@ -83,3 +83,4 @@ def summary_from_processed(
         ]
     except Exception:
         return []
+

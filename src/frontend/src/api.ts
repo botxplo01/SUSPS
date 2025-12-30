@@ -1,5 +1,5 @@
-/**
- * @author: David Lameck
+﻿/**
+ * @author: Lameck David Musumpuka
  * 
  * Base URL for all backend API calls.
  *
@@ -114,3 +114,4 @@ export function downloadBlob(blob: Blob, filename: string): void {
   a.remove();
   window.URL.revokeObjectURL(url);
 }
+

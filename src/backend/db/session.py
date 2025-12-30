@@ -1,4 +1,4 @@
-# @author: David Lameck
+﻿# @author: Lameck David Musumpuka
 
 from __future__ import annotations
 
@@ -86,3 +86,4 @@ if _DATABASE_URL:
 # Create the engine lazily; if DATABASE_URL is empty, this will error only when used
 engine = create_engine(_DATABASE_URL or "postgresql+psycopg2://", future=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
+

@@ -1,4 +1,4 @@
-# @author: David Lameck
+﻿# @author: Lameck David Musumpuka
 
 """Time-series forecasting helper used by the /ts/forecast endpoint.
 
@@ -402,3 +402,4 @@ class TimeSeriesForecaster:
                 )
 
         return out
+

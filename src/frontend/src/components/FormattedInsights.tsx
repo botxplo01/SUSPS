@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 interface FormattedInsightsProps {
   text: string;
@@ -215,3 +215,4 @@ export function FormattedInsights({ text }: FormattedInsightsProps) {
 
   return <div className="space-y-1.5 leading-relaxed">{elements}</div>;
 }
+

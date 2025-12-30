@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 import { useEffect, useState } from "react";
 import { fetchJson } from "../api";
@@ -124,3 +124,4 @@ export function useHotspotForecast(
 
   return { items, loading, error };
 }
+

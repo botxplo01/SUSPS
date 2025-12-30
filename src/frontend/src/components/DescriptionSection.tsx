@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 interface DescriptionSectionProps {
   title: string;
@@ -17,3 +17,4 @@ export function DescriptionSection({ title, children }: DescriptionSectionProps)
     </section>
   );
 }
+

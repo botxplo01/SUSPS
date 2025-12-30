@@ -1,4 +1,4 @@
-# @author: David Lameck
+﻿# @author: Lameck David Musumpuka
 
 """Raw data ingestion utilities for the SUSPS pipeline.
 
@@ -48,8 +48,10 @@ def _safe_df(df: pd.DataFrame, fallback: pd.DataFrame) -> pd.DataFrame:
 def fetch_worldpop(
     country_code: str = config.Defaults.worldpop_country_code,
 ) -> pd.DataFrame:
-    """Placeholder: fetch or mock WorldPop population grid summary.
-    Returns a small DataFrame to keep the pipeline runnable offline.
+    """Fetch a WorldPop-style population summary.
+
+    The current implementation returns a small synthetic sample when no
+    provider-specific integration is configured.
     """
     data = {
         "admin_unit": ["UnitA", "UnitB", "UnitC"],
@@ -69,7 +71,7 @@ def fetch_energy_demand(region: str = config.Defaults.region) -> pd.DataFrame:
     categorical/coverage-only fields.
 
     When no suitable raw inputs are found, it returns a small synthetic
-    dataset to keep the pipeline runnable.
+    dataset.
     """
     try:
         energy_dir = getattr(config, "ENERGY_PATH", None)
@@ -348,13 +350,13 @@ def _tomtom_sample_flows(lat: float, lon: float, api_key: str) -> pd.DataFrame:
         for h in hours
     ]
 
-    # TomTom flowSegmentData does not include veh/hour volume, so we generate a
-    # pseudo volume profile by taking the canonical curve and modulating it
-    # using the current congestion ratio plus a time-of-day weighting.
+    # TomTom flowSegmentData does not include veh/hour volume, so we derive a
+    # pseudo 24h volume profile by modulating the canonical curve using the
+    # observed congestion ratio.
     #
-    # Important: if congestion_ratio is ~1.0 (free-flow), a naive global scaling
-    # produces the exact canonical curve, which looks "stuck". The logic below
-    # ensures we still get a slightly adjusted but stable curve.
+    # When congestion is near free-flow (ratio ~= 1.0), naive global scaling
+    # would reproduce the canonical curve exactly. The modulation below avoids
+    # that degenerate case while remaining deterministic.
     now = datetime.now(timezone.utc)
     current_hour = int(now.hour)
     base_scale = min(max(float(current_congestion_ratio), 0.6), 1.6)
@@ -566,7 +568,11 @@ def fetch_air_quality() -> pd.DataFrame:
 
 
 def fetch_socioeconomic() -> pd.DataFrame:
-    """Placeholder socio-economic indicators by admin unit."""
+    """Return a small socio-economic indicator table.
+
+    Acts as a lightweight fallback when no external socioeconomic dataset is
+    configured.
+    """
     data = {
         "admin_unit": ["UnitA", "UnitB", "UnitC"],
         "income_usd": [2100, 1600, 1850],
@@ -636,3 +642,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

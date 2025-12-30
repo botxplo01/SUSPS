@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 import { useState } from "react";
 import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";
@@ -312,7 +312,7 @@ export function HotspotMap({ optimize = false, zoneId }: MapProps) {
                       </span>
                       <div className="flex items-center gap-1">
                         <span className="text-[10px] text-gray-500">
-                          {(z.baseScore * 100).toFixed(0)}% →
+                          {(z.baseScore * 100).toFixed(0)}% â†’
                         </span>
                         <span className="text-[10px] font-semibold text-emerald-600">
                           {(z.futureScore * 100).toFixed(0)}%
@@ -352,3 +352,4 @@ export function HotspotMap({ optimize = false, zoneId }: MapProps) {
     </section>
   );
 }
+

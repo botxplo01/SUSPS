@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthContext";
@@ -23,3 +23,4 @@ export function RequireAuth({ children }: RequireAuthProps) {
 
   return children;
 }
+

@@ -1,4 +1,4 @@
-# @author: David Lameck
+﻿# @author: Lameck David Musumpuka
 
 """Deterministic simulation helpers used by the SIMULATE API endpoints.
 
@@ -164,7 +164,7 @@ def simulate_energy(
       later in the day, negative shifts earlier). This is applied with a simple
       rotation over the 24h profile.
     - peak_scale: additional multiplier applied to a fixed set of peak hours
-      (07–08 and 17–18) after rotation.
+      (07â€“08 and 17â€“18) after rotation.
     - offpeak_scale: multiplier applied to non-peak hours (default 1.0).
     - flatten_ratio: 0..1 factor that pulls values toward the daily average
       (0 = no change, 1 = fully flattened profile at the mean).
@@ -253,7 +253,7 @@ def simulate_traffic(
     - peak_hour_shift: integer hour shift for rush-hour peaks, similar to
       simulate_energy.
     - peak_scale: additional multiplier applied to morning/evening peak hours
-      (07–09 and 16–19) after rotation.
+      (07â€“09 and 16â€“19) after rotation.
     - offpeak_scale: multiplier applied to non-peak hours (default 1.0).
     - flatten_ratio: 0..1 factor that pulls volumes toward the daily average
       (0 = no change, 1 = fully flattened profile at the mean).
@@ -320,3 +320,4 @@ def simulate_traffic(
             }
         )
     return simulated
+

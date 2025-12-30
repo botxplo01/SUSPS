@@ -1,4 +1,4 @@
-# @author: David Lameck
+﻿# @author: Lameck David Musumpuka
 
 """Preprocessing steps that turn raw ingested files into canonical features.
 
@@ -15,8 +15,8 @@ import re
 import zipfile
 import pandas as pd
 
-# Support both `python -m src.pipeline.preprocess` (preferred) and direct
-# script invocation like `python src/pipeline/preprocess.py`.
+# Support both module execution (`python -m src.pipeline.preprocess`) and direct
+# script execution (`python src/pipeline/preprocess.py`).
 try:  # pragma: no cover - normal path when run as a module
     from . import config
 except ImportError:  # pragma: no cover - fallback for script usage
@@ -29,9 +29,9 @@ except ImportError:  # pragma: no cover - fallback for script usage
     from src.pipeline import config
 
 
-# Common raw search order: flat RAW_DIR first (backwards compat), then
-# domain-specific subfolders when present. This is computed dynamically so
-# monkeypatching RAW_DIR in tests (or changing DATA_CITY) continues to work.
+# Raw search order: flat RAW_DIR first, then domain-specific subfolders.
+# Computed dynamically so changing DATA_CITY (or patching RAW_DIR in tests)
+# is reflected consistently.
 
 
 def _raw_search_dirs() -> list[Path]:
@@ -244,8 +244,8 @@ def preprocess_traffic() -> Path:
         raise FileNotFoundError(f"Missing raw input: {src}")
     df = pd.read_csv(src)
 
-    # If the raw TomTom or placeholder data is essentially flat (e.g. 600 veh/h
-    # at every hour), derive a more realistic canonical 24h profile from the
+    # If raw traffic data is essentially flat (e.g. 600 veh/h at every hour),
+    # derive a more realistic canonical 24h profile from the
     # synthetic traffic model and apply it per hour. This keeps REAL-mode
     # traffic charts informative even when the upstream provider returns a
     # degenerate series.
@@ -1133,3 +1133,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

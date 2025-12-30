@@ -1,11 +1,11 @@
-"""Advisory engine for the SUSPS backend.
+﻿"""Advisory engine for the SUSPS backend.
 
 Builds compact summaries of model outputs and processed artifacts, then
 uses the Hugging Face text generator to produce cached advisory insights
 for dashboard and domain-specific scopes.
 """
 
-# @author: David Lameck
+# @author: Lameck David Musumpuka
 
 import datetime as dt
 from statistics import mean
@@ -17,7 +17,7 @@ from .hf_client import HFTextGenerator
 
 logger = logging.getLogger("susps.hf")
 
-# cache: key -> (timestamp, text, model)
+# Cache: key -> (timestamp, text, model)
 _CACHE: Dict[str, Tuple[float, str, Optional[str]]] = {}
 _CACHE_TTL_SEC = 600.0  # 10 minutes
 
@@ -74,7 +74,7 @@ def _build_prompt(
     scenario: Optional[str] = None,
     view: Optional[str] = None,
 ) -> str:
-    # If a zone_id is provided, mention the selected area in the header
+    # Include optional context (selected area, scenario, view) in the prompt header.
     context_parts: list[str] = []
     if zone_id:
         context_parts.append(f"area/zone: {zone_id}")
@@ -103,7 +103,7 @@ def _build_prompt(
             f"  peak: {round(summ.get('peak', 0.0), 2)}",
             f"  trough: {round(summ.get('trough', 0.0), 2)}",
         ]
-        # Surface a few optional enriched fields when present.
+        # Include optional enriched fields when present.
         extra_keys = [
             "pollution_index_avg",
             "matatu_routes",
@@ -170,9 +170,7 @@ def _prepare_scope_data(scope: str, bundles: Dict[str, Any]) -> Dict[str, Any]:
         pred = [{"x": p.get("year"), "y": p.get("predicted_population")} for p in items]
         out["growth_population"] = _summarize_timeseries(pred, "x", "y")
 
-    # Load and add enriched cross-domain data to the summaries.
-    # Unlike the original implementation, this now provides context to all
-    # scopes, not just the main dashboard, to generate more relevant insights.
+    # Add cross-domain context from processed artifacts when available.
     try:
         import pandas as pd
         from src.pipeline import config as _cfg
@@ -248,7 +246,8 @@ def _prepare_scope_data(scope: str, bundles: Dict[str, Any]) -> Dict[str, Any]:
                             hs_summary["top_admin_units"] = ", ".join(sorted(top))
                     out["urban_hotspots"] = hs_summary
     except Exception:
-        pass  # Never let enriched data failure break the advisory
+        # Enrichment is optional and must not break advisory generation.
+        pass
 
     return out
 
@@ -259,11 +258,17 @@ def generate_insights_from_scope(
     zone_id: Optional[str] = None,
     scenario: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """
-    scope: one of 'dashboard', 'growth', 'energy', 'traffic'
-    bundles: dict with any of keys 'growth', 'energy', 'traffic' as lists of items from endpoints
-    zone_id: optional selected area ID that the advisory should focus on (passed through to prompt)
-    returns: {"text": markdown_text, "model": model_name, "cached": bool}
+    """Generate cached advisory text from backend series bundles.
+
+    Args:
+        scope: One of 'dashboard', 'growth', 'energy', 'traffic'.
+        bundles: Dict containing any of: 'growth', 'energy', 'traffic'. Values are
+            the corresponding items returned by the API endpoints.
+        zone_id: Optional area identifier to anchor the guidance.
+        scenario: Optional scenario label to include in the prompt.
+
+    Returns:
+        Dict with: text, model, cached, generated_at, fallback.
     """
     scope = (scope or "dashboard").lower()
     scope = (
@@ -271,7 +276,7 @@ def generate_insights_from_scope(
     )
     summary = _prepare_scope_data(scope, bundles)
     prompt = _build_prompt(scope, summary, zone_id=zone_id, scenario=scenario, view=None)
-    # stable cache key (sha256 of sorted JSON, including zone + scenario for context)
+    # Stable cache key (sha256 of sorted JSON), including zone/scenario for context.
     summary_with_zone = {"zone_id": zone_id, "scenario": scenario, "data": summary}
     summary_json = json.dumps(summary_with_zone, sort_keys=True, default=str)
     cache_key = (
@@ -292,7 +297,7 @@ def generate_insights_from_scope(
     text = gen.generate(prompt)
     # Use timezone-aware UTC timestamp to avoid utcnow deprecation
     now_iso = dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
-    # Detect HF fallback string and avoid caching it
+    # Detect fallback output and avoid caching it.
     is_fallback = text.strip().startswith("Advisory engine is temporarily unavailable;")
     if is_fallback:
         try:
@@ -320,7 +325,7 @@ def _prepare_snapshot_data(scope: str, snapshot: Dict[str, Any]) -> Dict[str, An
     if not isinstance(series, list):
         return out
 
-    # Group for optional comparisons
+    # Grouped by metric for optional baseline comparisons.
     grouped: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
     for s in series:
@@ -353,7 +358,7 @@ def _prepare_snapshot_data(scope: str, snapshot: Dict[str, Any]) -> Dict[str, An
         out[key] = summ
         grouped.setdefault(metric, {})[label.strip().lower()] = summ
 
-    # Add comparisons to baseline/real if present.
+    # Add comparisons to baseline/real when present.
     for metric, by_label in grouped.items():
         real = None
         for k in ("real", "baseline"):
@@ -411,7 +416,7 @@ def generate_insights_from_snapshot(
     summary = _prepare_snapshot_data(scope, snapshot)
     prompt = _build_prompt(scope, summary, zone_id=zone_id, scenario=scenario, view=view)
 
-    # Cache key includes full snapshot payload so insights update when displayed data changes.
+    # Cache key includes snapshot payload so insights track the displayed data.
     cache_payload = {
         "zone_id": zone_id,
         "scenario": scenario,
@@ -448,3 +453,4 @@ def generate_insights_from_snapshot(
         "generated_at": now_iso,
         "fallback": is_fallback,
     }
+

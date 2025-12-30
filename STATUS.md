@@ -28,15 +28,23 @@
  ## Changelog
 
  - **2025-12-28**: Consolidated `system_status.md` + `WARP.md` into `STATUS.md`.
+ - **2025-12-30**: Snapshot-based advisory (POST), energy simulation normalization fix, improved TomTom traffic fallback and Live Traffic behavior, and repo-wide comment/author cleanup.
  
  ## Current status snapshot
  
- - Snapshot date: **2025-11-20**
+ - Snapshot date: **2025-12-30**
  - Tooling: Ruff/Black/Mypy/Pytest green locally.
  - Backend: FastAPI app in `src/backend/api.py` with deterministic fallbacks and optional Postgres.
  - Frontend: React + Tailwind SPA in `src/frontend`, area-driven (no Demo/API toggle).
  - Pipeline: ingest → preprocess producing canonical raw and processed artifacts under `data/<CITY>/...`.
  - Render: optional bootstrap on start (S3 pull → pipeline → seed DB) controlled by `DB_BOOTSTRAP_ON_START`.
+
+ Recent updates included:
+
+ - **Advisory**: snapshot-aware advisory generation so AI insights reflect the currently displayed series (Real/Predicted/Simulated/Optimal).
+ - **Energy simulation**: normalized baseline energy shapes to avoid zero outputs when DB-style rows are used.
+ - **Traffic**: TomTom-derived dynamic fallback profile to avoid static charts in deployments without DB history; Live Traffic uses manual refresh with visible freshness metadata.
+ - **Code quality**: repo-wide comment cleanup and standardized author headers.
  
  ---
  
@@ -189,6 +197,7 @@
  - `GET /growth`
  - `GET /energy` (supports `area_id`)
  - `GET /traffic` (supports `area_id`)
+ - `GET /traffic/live` (TomTom provider when configured; includes freshness metadata)
  - `GET /energy/summary` (supports `area_id`)
  - `GET /traffic/summary` (supports `area_id`)
  
@@ -226,6 +235,9 @@
  - `GET /advisory/status`
  - `GET /advisory/{scope}` where `scope ∈ {dashboard,growth,energy,traffic}`
    - Query params: `zone_id` and optional `scenario` (e.g. `growth_baseline`, `growth_simulate`)
+ - `POST /advisory/{scope}` (recommended)
+   - Accepts a snapshot of the series currently displayed in the UI so insights track REAL/PREDICT/SIMULATE/OPTIMIZE views.
+   - Query params: `zone_id` and optional `scenario`
  - `GET /advisory_batch`
  
  ---
@@ -241,9 +253,15 @@
  - Domain pages (Growth/Energy/Traffic):
    - REAL vs SIMULATE mode toggle.
    - Actions: Predict (calls `/ts/forecast`), Simulate (calls `/simulate/run`), Optimize (derived overlay).
+   - AI Analysis & Insights use the snapshot-based advisory path so the narrative reflects the currently displayed series.
  - Hotspot map:
    - Uses `/hotspots/areas` and `/hotspots/areas/forecast`.
    - Current implementation uses circle overlays; choropleths via GeoJSON join is a planned enhancement.
+
+ Traffic page specifics:
+
+ - Live Traffic card fetches from `/traffic/live` and exposes freshness/cached metadata.
+ - Automatic polling is disabled; refresh is manual to reduce API usage.
  
  ---
  
@@ -320,6 +338,11 @@
  - `HF_API_KEY` preferred; token aliases may also be accepted.
  - Optional overrides: `HF_MODEL_NAME`, plus specialized model env vars.
  - Advisory responses are cached (~10 min) and fall back to deterministic guidance when unavailable.
+
+ Traffic live caching:
+
+ - `TRAFFIC_LIVE_TTL_SECONDS` (default 300s)
+ - `TRAFFIC_LIVE_POINTS_TTL_SECONDS` (default 30s)
  
  ---
  

@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 import { useEffect, useState } from "react";
 import { fetchJson } from "../api";
@@ -178,3 +178,4 @@ export function useTrafficSeries(areaId: number | null): SeriesResult {
 
   return { points, loading, error };
 }
+

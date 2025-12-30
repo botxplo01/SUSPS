@@ -1,4 +1,4 @@
-// @author: David Lameck
+﻿// @author: Lameck David Musumpuka
 
 import { FormEvent, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -88,3 +88,4 @@ export function SignInPage() {
     </AuthLayout>
   );
 }
+

@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 type Mode = "REAL" | "SIMULATE";
 
@@ -33,3 +33,4 @@ export function ModeToggle({ mode, onChange }: ModeToggleProps) {
     </div>
   );
 }
+

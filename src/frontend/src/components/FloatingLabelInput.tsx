@@ -1,4 +1,4 @@
-/** @author: David Lameck **/
+﻿/** @author: Lameck David Musumpuka **/
 
 import type { InputHTMLAttributes } from "react";
 
@@ -26,3 +26,4 @@ export function FloatingLabelInput({ label, id, type = "text", ...rest }: Floati
     </div>
   );
 }
+

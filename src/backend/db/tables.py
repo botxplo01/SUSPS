@@ -1,4 +1,4 @@
-# @author: David Lameck
+﻿# @author: Lameck David Musumpuka
 
 from __future__ import annotations
 
@@ -225,3 +225,4 @@ class HotspotScore(Base):
     income_norm = Column(Float, nullable=True)
     employment_score = Column(Float, nullable=True)
     hotspot_score = Column(Float, nullable=True)
+

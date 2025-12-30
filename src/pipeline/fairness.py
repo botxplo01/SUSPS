@@ -1,4 +1,4 @@
-# @author: David Lameck
+﻿# @author: Lameck David Musumpuka
 
 """Minimal fairness and coverage audits for processed tabular data.
 
@@ -86,3 +86,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
