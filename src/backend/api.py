@@ -126,14 +126,65 @@ def _get_tomtom_live_points_payload(force_refresh: bool = False) -> Dict[str, An
             }
 
     lat, lon = _city_coords()
-    steps = [(-0.02, -0.02), (-0.02, 0.02), (0.0, 0.0), (0.02, -0.02), (0.02, 0.02)]
-    points: List[Dict[str, Any]] = []
+    try:
+        zoom = int(os.getenv("TRAFFIC_LIVE_ZOOM", "14"))
+    except Exception:
+        zoom = 14
+    try:
+        grid_n = int(os.getenv("TRAFFIC_LIVE_GRID_N", "3"))
+    except Exception:
+        grid_n = 3
+    grid_n = max(1, min(grid_n, 7))
+    try:
+        radius_deg = float(os.getenv("TRAFFIC_LIVE_RADIUS_DEG", "0.05"))
+    except Exception:
+        radius_deg = 0.05
+    radius_deg = max(0.001, min(radius_deg, 0.25))
+    try:
+        jitter_deg = float(os.getenv("TRAFFIC_LIVE_JITTER_DEG", "0.003"))
+    except Exception:
+        jitter_deg = 0.003
+    jitter_deg = max(0.0, min(jitter_deg, 0.05))
 
-    for idx, (dlat, dlon) in enumerate(steps, start=1):
-        plat, plon = lat + dlat, lon + dlon
+    def _rand_unit() -> float:
+        try:
+            return secrets.randbits(32) / float(2**32)
+        except Exception:
+            return 0.5
+
+    def _jitter() -> float:
+        return (2.0 * _rand_unit() - 1.0) * jitter_deg
+
+    try:
+        max_points = int(os.getenv("TRAFFIC_LIVE_MAX_POINTS", str(grid_n * grid_n)))
+    except Exception:
+        max_points = int(grid_n * grid_n)
+    max_points = max(1, min(max_points, 49))
+
+    half = (grid_n - 1) / 2.0
+    offsets: List[tuple[float, float]] = []
+    for i in range(grid_n):
+        for j in range(grid_n):
+            if grid_n <= 1 or half == 0:
+                offsets.append((0.0, 0.0))
+            else:
+                offsets.append(
+                    (
+                        ((i - half) / half) * radius_deg,
+                        ((j - half) / half) * radius_deg,
+                    )
+                )
+    # Randomize sampling order to reduce the chance of repeatedly snapping to the
+    # same road segments when only a subset of points succeed.
+    offsets = sorted(offsets, key=lambda _: secrets.randbits(32))
+
+    points: List[Dict[str, Any]] = []
+    for idx, (base_dlat, base_dlon) in enumerate(offsets[:max_points], start=1):
+        plat = lat + base_dlat + _jitter()
+        plon = lon + base_dlon + _jitter()
         try:
             r = requests.get(
-                "https://api.tomtom.com/traffic/services/4/flowSegmentData/relative0/10/json",
+                f"https://api.tomtom.com/traffic/services/4/flowSegmentData/relative0/{zoom}/json",
                 params={"point": f"{plat},{plon}", "key": api_key},
                 timeout=10,
             )
@@ -178,6 +229,17 @@ def _get_tomtom_live_points_payload(force_refresh: bool = False) -> Dict[str, An
         except Exception:
             avg_ratio = None
 
+    all_free_flow = None
+    try:
+        if points:
+            all_free_flow = all(
+                abs(float(p.get("current_speed", 0.0)) - float(p.get("free_flow_speed", 0.0)))
+                < 0.01
+                for p in points
+            )
+    except Exception:
+        all_free_flow = None
+
     payload = {
         "points": points,
         "meta": {
@@ -186,9 +248,17 @@ def _get_tomtom_live_points_payload(force_refresh: bool = False) -> Dict[str, An
             "generated_at": now.isoformat(),
             "served_at": now.isoformat(),
             "samples_used": int(len(points)),
+            "points_requested": int(grid_n * grid_n),
+            "points_target": int(min(max_points, grid_n * grid_n)),
+            "zoom": int(zoom),
+            "center": {"lat": float(lat), "lon": float(lon)},
+            "radius_deg": float(radius_deg),
+            "grid_n": int(grid_n),
+            "jitter_deg": float(jitter_deg),
             "avg_congestion_ratio": avg_ratio,
             "avg_current_speed": avg_cur,
             "avg_free_flow_speed": avg_free,
+            "all_points_free_flow": all_free_flow,
             "cache_age_seconds": 0.0,
             "ttl_seconds": float(_TRAFFIC_LIVE_POINTS_TTL_SECONDS),
             "request_id": secrets.token_hex(4),
@@ -2250,7 +2320,7 @@ def _build_pdf(payload: ExportPayload) -> bytes:
 
     footer_text = (
         payload.footer_text
-        or "Smart Urban Simulation and Prediction System (SUSPS) â€” Â© 2025 Developed by David Lameck."
+        or "Smart Urban Simulation and Prediction System (SUSPS) - (c) 2025 Developed by David Lameck."
     )
 
     def _footer(canvas, doc):  # type: ignore[override]

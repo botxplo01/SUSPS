@@ -165,4 +165,4 @@ python -m src.pipeline.preprocess
 The pipeline reads raw data and writes processed artifacts to the `data/` directory.
 
 ---
-*This project is for educational purposes by Lameck David Musumpuka as part of a Software Engineering Final Year Project at Cavendish University 2025.*
+*This project is for educational purposes by Lameck David Musumpuka as part of the Software Engineering Final Year Project at Cavendish University 2025.*

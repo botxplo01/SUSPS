@@ -232,7 +232,7 @@ def _seed_traffic_series(session: SessionLocal, area: UrbanArea) -> int:
                 unique = set(vals)
                 spread = max(vals) - min(vals)
                 # Treat as degenerate when there are very few distinct levels
-                # and they are tightly clustered (e.g. 590â€“610 only).
+                # and they are tightly clustered (e.g. 590-610 only).
                 if len(unique) <= 3 and spread < 100:
                     session.query(TrafficFlow).delete()
                     session.commit()

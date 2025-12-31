@@ -38,7 +38,7 @@ type TrafficExportTarget =
 
 /** Footer text used for Traffic PDF/CSV exports. */
 const EXPORT_FOOTER_TEXT =
-  "Smart Urban Simulation and Prediction System (SUSPS) â€” Â© 2025 Developed by David Lameck.";
+  "Smart Urban Simulation and Prediction System (SUSPS) - (c) 2025 Developed by David Lameck.";
 
 function getTrafficScenarioLabel(id: string): string {
   switch (id) {
@@ -345,7 +345,7 @@ export function TrafficPage({
                       String(p.x),
                       Math.round(p.y).toString(),
                     ])
-                  : [["â€”", "â€”"]],
+                  : [["—", "—"]],
             },
           ];
 
@@ -479,7 +479,7 @@ export function TrafficPage({
                   ? livePayload.meta.served_at
                   : typeof livePayload.meta.generated_at === "string"
                     ? livePayload.meta.generated_at
-                    : "â€”"}
+                    : "—"}
                 {typeof livePayload.meta.cached === "boolean"
                   ? ` (cached: ${livePayload.meta.cached ? "yes" : "no"})`
                   : ""}
@@ -532,7 +532,7 @@ export function TrafficPage({
               <div className="mt-1 text-lg font-semibold text-gray-900">
                 {typeof livePayload.meta.avg_congestion_ratio === "number"
                   ? livePayload.meta.avg_congestion_ratio.toFixed(2)
-                  : "â€”"}
+                  : "—"}
               </div>
             </div>
             <div className="rounded-lg bg-neutral-50 p-3">
@@ -540,7 +540,7 @@ export function TrafficPage({
               <div className="mt-1 text-lg font-semibold text-gray-900">
                 {typeof livePayload.meta.avg_current_speed === "number"
                   ? `${livePayload.meta.avg_current_speed.toFixed(1)} km/h`
-                  : "â€”"}
+                  : "—"}
               </div>
             </div>
             <div className="rounded-lg bg-neutral-50 p-3">
@@ -548,7 +548,7 @@ export function TrafficPage({
               <div className="mt-1 text-lg font-semibold text-gray-900">
                 {typeof livePayload.meta.avg_free_flow_speed === "number"
                   ? `${livePayload.meta.avg_free_flow_speed.toFixed(1)} km/h`
-                  : "â€”"}
+                  : "—"}
               </div>
             </div>
             <div className="rounded-lg bg-neutral-50 p-3">
@@ -556,7 +556,7 @@ export function TrafficPage({
               <div className="mt-1 text-lg font-semibold text-gray-900">
                 {typeof livePayload.meta.samples_used === "number"
                   ? livePayload.meta.samples_used
-                  : "â€”"}
+                  : "—"}
               </div>
             </div>
           </div>
@@ -570,20 +570,20 @@ export function TrafficPage({
               rows={
                 livePayload.points.length
                   ? livePayload.points.map((p: any) => [
-                      String(p.id ?? "â€”"),
+                      String(p.id ?? "—"),
                       typeof p.current_speed === "number"
                         ? `${p.current_speed.toFixed(1)} km/h`
-                        : "â€”",
+                        : "—",
                       typeof p.free_flow_speed === "number"
                         ? `${p.free_flow_speed.toFixed(1)} km/h`
-                        : "â€”",
+                        : "—",
                       typeof p.congestion_ratio === "number"
                         ? p.congestion_ratio.toFixed(2)
-                        : "â€”",
-                      typeof p.confidence === "number" ? p.confidence.toFixed(2) : "â€”",
+                        : "—",
+                      typeof p.confidence === "number" ? p.confidence.toFixed(2) : "—",
                       p.road_closure ? "Yes" : "No",
                     ])
-                  : [["â€”", "â€”", "â€”", "â€”", "â€”", "â€”"]]
+                  : [["—", "—", "—", "—", "—", "—"]]
               }
             />
           </div>
@@ -726,7 +726,7 @@ export function TrafficPage({
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-700">
-                Flattening toward average (0â€“1)
+                Flattening toward average (0-1)
               </label>
               <input
                 type="number"
@@ -790,7 +790,7 @@ export function TrafficPage({
                   ),
                 ];
               })
-            : [["â€”", "â€”"]]
+            : [["–", "–"]]
         }
       />
 

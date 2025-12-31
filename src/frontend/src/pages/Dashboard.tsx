@@ -36,7 +36,7 @@ type DashboardExportTarget =
 
 /** Footer text used for Dashboard PDF/CSV exports. */
 const EXPORT_FOOTER_TEXT =
-  "Smart Urban Simulation and Prediction System (SUSPS) â€” Â© 2025 Developed by David Lameck.";
+  "Smart Urban Simulation and Prediction System (SUSPS) - (c) 2025 Developed by David Lameck.";
 
 /**
  * Area-driven dashboard page.
@@ -122,7 +122,7 @@ export function DashboardPage({
                 String(p.x),
                 Math.round(p.y).toString(),
               ])
-            : [["â€”", "â€”"]],
+            : [["—", "—"]],
       },
     ],
     charts: [
@@ -158,7 +158,7 @@ export function DashboardPage({
         rows:
           energyPoints && energyPoints.length
             ? energyPoints.map((p) => [String(p.x), p.y.toFixed(2)])
-            : [["â€”", "â€”"]],
+            : [["-", "-"]],
       },
     ],
     charts: [
@@ -197,7 +197,7 @@ export function DashboardPage({
                 String(p.x),
                 Math.round(p.y).toString(),
               ])
-            : [["â€”", "â€”"]],
+            : [["-", "-"]],
       },
     ],
     charts: [

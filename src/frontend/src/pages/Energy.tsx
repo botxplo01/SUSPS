@@ -38,7 +38,7 @@ type EnergyExportTarget =
 
 /** Footer text used for Energy PDF/CSV exports. */
 const EXPORT_FOOTER_TEXT =
-  "Smart Urban Simulation and Prediction System (SUSPS) â€” Â© 2025 Developed by David Lameck.";
+  "Smart Urban Simulation and Prediction System (SUSPS) - (c) 2025 Developed by David Lameck.";
 
 function getEnergyScenarioLabel(id: string): string {
   switch (id) {
@@ -327,7 +327,7 @@ export function EnergyPage({
                       String(p.x),
                       p.y.toFixed(2),
                     ])
-                  : [["â€”", "â€”"]],
+                  : [["–", "–"]],
             },
           ];
 
@@ -585,7 +585,7 @@ export function EnergyPage({
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-700">
-                Flattening toward average (0â€“1)
+                Flattening toward average (0-1)
               </label>
               <input
                 type="number"
@@ -649,7 +649,7 @@ export function EnergyPage({
                   ),
                 ];
               })
-            : [["â€”", "â€”"]]
+            : [["–", "–"]]
         }
       />
 
