@@ -149,7 +149,9 @@ After 50 seconds of inactivity, the system is automatically spun down, and it mi
 
 ## Usage
 
-Access the deployed frontend at `https://susps-main.onrender.com`. From the dashboard, you can navigate to different sections to explore predictions and simulations for urban growth, energy, and traffic.
+You can access the deployed frontend at `https://susps-main.onrender.com` to view a demo of the system if you don't have the necessary credentials for the core features. If you'd like to run the system on your own machine for free, you can easily obtain your credentials by checking the [prerequisites section](#prerequisites). From the dashboard, you can explore various sections, including predictions and simulations for urban growth, energy, and traffic.
+
+Please note that, since the app is hosted on free-tier services, some features—or even the entire system—may be limited or unavailable if traffic exceeds the free tier's resource limits.
 
 ## Data Pipeline
 
