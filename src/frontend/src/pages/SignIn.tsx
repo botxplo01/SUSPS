@@ -1,4 +1,4 @@
-﻿// @author: Lameck David Musumpuka
+// @author: David Lameck
 
 import { FormEvent, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";

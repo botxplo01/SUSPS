@@ -1,4 +1,4 @@
-﻿/** @author: Lameck David Musumpuka **/
+/** @author: David Lameck **/
 
 import { useEffect, useState } from "react";
 import { postJson } from "../api";

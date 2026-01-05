@@ -1,4 +1,4 @@
-﻿/** @author: Lameck David Musumpuka **/
+/** @author: David Lameck **/
 
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";

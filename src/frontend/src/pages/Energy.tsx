@@ -1,4 +1,4 @@
-﻿// @author: Lameck David Musumpuka
+// @author: David Lameck
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AreaBadge } from "../components/AreaBadge";

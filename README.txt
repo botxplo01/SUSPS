@@ -1,7 +1,7 @@
 
 SUSPS — Smart Urban Simulation and Prediction System
 
-Author: Lameck David Musumpuka
+Author: David Lameck
 
 
 1) Overview

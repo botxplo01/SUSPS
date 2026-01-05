@@ -1,4 +1,4 @@
-# @author: Lameck David Musumpuka
+# @author: David Lameck
 
 """FastAPI app smoke tests for health and advisory endpoints."""
 

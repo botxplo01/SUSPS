@@ -1,4 +1,4 @@
-﻿# @author: Lameck David Musumpuka
+# @author: David Lameck
 
 """SQLAlchemy declarative base used by all SUSPS backend ORM models."""
 

@@ -1,4 +1,4 @@
-﻿# @author: Lameck David Musumpuka
+# @author: David Lameck
 
 """Helpers for querying OpenStreetMap via the Overpass API.
 

@@ -1,11 +1,11 @@
-﻿"""Advisory engine for the SUSPS backend.
+"""Advisory engine for the SUSPS backend.
 
 Builds compact summaries of model outputs and processed artifacts, then
 uses the Hugging Face text generator to produce cached advisory insights
 for dashboard and domain-specific scopes.
 """
 
-# @author: Lameck David Musumpuka
+# @author: David Lameck
 
 import datetime as dt
 from statistics import mean

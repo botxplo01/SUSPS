@@ -1,4 +1,4 @@
-﻿# @author: Lameck David Musumpuka
+# @author: David Lameck
 
 """Time-series forecasting helper used by the /ts/forecast endpoint.
 

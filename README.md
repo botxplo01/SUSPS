@@ -1,4 +1,4 @@
-# SUSPS: Smart Urban Simulation and Prediction System by Lameck David Musumpuka
+# SUSPS: Smart Urban Simulation and Prediction System by David Lameck
 
 **SUSPS** is a sophisticated, AI-driven platform designed for urban planning and resource management in the context of rapidly growing cities, with an initial focus on Lusaka, Zambia. The system provides predictive insights into urban growth, energy consumption, and traffic patterns, enabling city planners, policymakers, and researchers to make data-informed decisions.
 
@@ -165,4 +165,4 @@ python -m src.pipeline.preprocess
 The pipeline reads raw data and writes processed artifacts to the `data/` directory.
 
 ---
-*This project is for educational purposes by Lameck David Musumpuka as part of the Software Engineering Final Year Project at Cavendish University 2025.*
+*This project is for educational purposes by David Lameck as part of the Software Engineering Final Year Project at Cavendish University 2025.*

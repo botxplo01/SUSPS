@@ -1,5 +1,5 @@
-﻿/**
- * @author: Lameck David Musumpuka
+/**
+ * @author: David Lameck
  * 
  * Base URL for all backend API calls.
  *

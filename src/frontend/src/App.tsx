@@ -1,4 +1,4 @@
-﻿// @author: Lameck David Musumpuka
+// @author: David Lameck
 
 import { useState, useEffect, useCallback } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";

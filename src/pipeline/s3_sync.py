@@ -1,4 +1,4 @@
-﻿# @author: Lameck David Musumpuka
+# @author: David Lameck
 
 """Utility functions for syncing data/<CITY>/raw/ with an S3 bucket.
 

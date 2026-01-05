@@ -1,4 +1,4 @@
-﻿/** @author: Lameck David Musumpuka **/
+/** @author: David Lameck **/
 
 import { useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";

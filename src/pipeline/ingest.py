@@ -1,4 +1,4 @@
-﻿# @author: Lameck David Musumpuka
+# @author: David Lameck
 
 """Raw data ingestion utilities for the SUSPS pipeline.
 

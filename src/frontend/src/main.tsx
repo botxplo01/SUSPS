@@ -1,4 +1,4 @@
-﻿// @author: Lameck David Musumpuka
+// @author: David Lameck
 
 import React from "react";
 import ReactDOM from "react-dom/client";
