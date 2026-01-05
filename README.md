@@ -2,7 +2,7 @@
 
 **SUSPS** is a sophisticated, AI-driven platform designed for urban planning and resource management in the context of rapidly growing cities, with an initial focus on Lusaka, Zambia. The system provides predictive insights into urban growth, energy consumption, and traffic patterns, enabling city planners, policymakers, and researchers to make data-informed decisions.
 
-This project is developed as a Final Year Software Engineering Project, showcasing a modern, full-stack application with a decoupled architecture, a data processing pipeline, and machine learning-powered features.
+This project was developed by me, David Lameck, for my Final Year Software Engineering Project at Cavendish University Zambia, 2025, showcasing a modern, full-stack application with a decoupled architecture, a data processing pipeline, and machine learning-powered features.
 
 ## System Architecture
 
@@ -61,13 +61,14 @@ To set up a local development environment, you will need to run the frontend and
 
 ### PREREQUISITES
 
+- Raw data files (view `docs/data_sources.md` for details)
 - Python 3.11
 - Node.js 18+
 - PostgreSQL 14+ (required)
-- OpenAQ API key (can be obtained for free: https://docs.openaq.org/docs)
-- HuggingFace API key and 'meta-llama/Llama-3.1-8B-Instruct' license accepted (can be obtained for free: https://huggingface.co/)
-- TomTom API key (can be obtained for free: https://developer.tomtom.com/documentation)
-- Openweather API key (can be obtained for free: https://openweathermap.org/api)
+- OpenAQ API key (can be obtained for free: <https://docs.openaq.org/docs>); or optionally AirQo API key (can be obtained for free: <https://airqo.net/products/api>)
+- HuggingFace API key and 'meta-llama/Llama-3.1-8B-Instruct' license accepted (can be obtained for free: <https://huggingface.co/>)
+- TomTom API key (can be obtained for free: <https://developer.tomtom.com/documentation>)
+- Openweather API key (can be obtained for free: <https://openweathermap.org/api>)
 
 ### BACKEND SETUP
 
@@ -140,8 +141,8 @@ To set up a local development environment, you will need to run the frontend and
 
 The SUSPS platform is deployed on Render, with the frontend, backend, and Render-managed PostgreSQL database running as separate services.
 
-- **Frontend**: `https://susps-main.onrender.com`
-- **Backend**: `https://susps-web.onrender.com`
+- **Frontend**: <https://susps-main.onrender.com>
+- **Backend**: <https://susps-web.onrender.com>
 
 Note that all services (backend, frontend, and Render-managed PostgreSQL database) are on a free tier and may spin down due to inactivity. The frontend is configured to automatically send a "wake-up" request to the backend upon loading to ensure a seamless user experience. Note that it may take 3-8 minutes for the system to fully startup.
 
@@ -149,9 +150,11 @@ After 50 seconds of inactivity, the system is automatically spun down, and it mi
 
 ## Usage
 
-You can access the deployed frontend at `https://susps-main.onrender.com` to view a demo of the system if you don't have the necessary credentials for the core features. If you'd like to run the system on your own machine for free, you can easily obtain your credentials by checking the [prerequisites section](#prerequisites). From the dashboard, you can explore various sections, including predictions and simulations for urban growth, energy, and traffic.
+You can access the deployed frontend at <https://susps-main.onrender.com> to view a demo of the system if you don't have the necessary credentials for the core features.
 
-Please note that, since the app is hosted on free-tier services, some features—or even the entire system—may be limited or unavailable if traffic exceeds the free tier's resource limits.
+Please note that, since the app is hosted on free-tier services, some features, or even the entire system, may be limited or unavailable if traffic exceeds the free tier's resource limits. If you'd like to run the system on your own machine for free, you can easily obtain your credentials by checking the [prerequisites section](#prerequisites).
+
+From the dashboard, you can explore various sections, including predictions and simulations for urban growth, energy, and traffic.
 
 ## Data Pipeline
 
@@ -167,4 +170,5 @@ python -m src.pipeline.preprocess
 The pipeline reads raw data and writes processed artifacts to the `data/` directory.
 
 ---
-*This project is for educational purposes by David Lameck as part of the Software Engineering Final Year Project at Cavendish University 2025.*
+
+_This project is for educational purposes by David Lameck as part of the Software Engineering Final Year Project at Cavendish University Zambia 2025._
