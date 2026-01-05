@@ -29,6 +29,7 @@
 
  - **2025-12-28**: Consolidated `system_status.md` + `WARP.md` into `STATUS.md`.
  - **2025-12-30**: Snapshot-based advisory (POST), energy simulation normalization fix, improved TomTom traffic fallback and Live Traffic behavior, and repo-wide comment/author cleanup.
+ - **2026-01-05**: Fixed mojibake/encoding artifacts in exports + empty-table placeholders; hardened `/traffic/live` freshness (no-store headers, cache-busting param, richer meta); improved TomTom live sampling (grid + jitter + configurable zoom/radius/max points).
  
  ## Current status snapshot
  
@@ -44,6 +45,8 @@
  - **Advisory**: snapshot-aware advisory generation so AI insights reflect the currently displayed series (Real/Predicted/Simulated/Optimal).
  - **Energy simulation**: normalized baseline energy shapes to avoid zero outputs when DB-style rows are used.
  - **Traffic**: TomTom-derived dynamic fallback profile to avoid static charts in deployments without DB history; Live Traffic uses manual refresh with visible freshness metadata.
+ - **Exports/UI encoding**: removed mojibake characters (e.g. `â€”`, `Â©`) by replacing hardcoded strings with clean ASCII/Unicode (export footer text and table placeholders).
+ - **Live Traffic sampling**: widened TomTom sampling from fixed 5 points to a configurable grid with jitter and zoom controls to avoid repeating identical segments.
  - **Code quality**: repo-wide comment cleanup and standardized author headers.
  
  ---
@@ -262,6 +265,7 @@
 
  - Live Traffic card fetches from `/traffic/live` and exposes freshness/cached metadata.
  - Automatic polling is disabled; refresh is manual to reduce API usage.
+ - Backend response includes sampling metadata (e.g. `zoom`, `grid_n`, `radius_deg`, `jitter_deg`, `points_target`) to help verify what was queried.
  
  ---
  
@@ -343,6 +347,12 @@
 
  - `TRAFFIC_LIVE_TTL_SECONDS` (default 300s)
  - `TRAFFIC_LIVE_POINTS_TTL_SECONDS` (default 30s)
+ - TomTom live sampling (used by `/traffic/live` when `TRAFFIC_PROVIDER=tomtom`):
+   - `TRAFFIC_LIVE_ZOOM` (default 14)
+   - `TRAFFIC_LIVE_GRID_N` (default 3; grid is `grid_n x grid_n`)
+   - `TRAFFIC_LIVE_RADIUS_DEG` (default 0.05)
+   - `TRAFFIC_LIVE_JITTER_DEG` (default 0.003)
+   - `TRAFFIC_LIVE_MAX_POINTS` (default `grid_n * grid_n`, capped at 49)
  
  ---
  
