@@ -4,6 +4,7 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+.env
 
 
 # Data
@@ -16,19 +17,24 @@ venv/
 build/
 *.spec
 
+
 # Node / JS
 node_modules/
+
 
 # OS
 .DS_Store
 Thumbs.db
 
+
 # Logs
 logs/
 *.log
 
+
 # Ruff
 .ruff_cache/
+
 
 # Temp / local artifacts
 /tmp_project_items.json
