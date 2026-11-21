@@ -6,8 +6,8 @@ services:
     region: frankfurt
     buildCommand: |
       pip install --upgrade pip
-      pip install -r requirements.txt
-    startCommand: ./scripts/render_start.sh
+      pip install -r backend/requirements.txt
+    startCommand: ./backend/scripts/render_start.sh
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION

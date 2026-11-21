@@ -13,4 +13,5 @@ repos:
     hooks:
       - id: mypy
         pass_filenames: false
-        args: ["-p", "src", "-p", "backend", "--pretty"]
+        args: ["--config-file", "backend/pyproject.toml", "-p", "api", "-p", "advisory", "-p", "db", "-p", "models", "-p", "pipeline", "--pretty"]
+        additional_dependencies: []

@@ -1,0 +1,26 @@
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+src = ["."]
+exclude = [
+  "data",
+  "build",
+  "dist",
+  ".venv",
+  ".git",
+]
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = ["."]
+explicit_package_bases = true
+namespace_packages = true
+ignore_missing_imports = true
+disable_error_code = ["import-untyped"]
+warn_return_any = true
+warn_unused_ignores = true
+pretty = true

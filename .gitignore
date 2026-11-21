@@ -4,12 +4,17 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+backend/.venv/
+backend/venv/
+
+# Environment files – NEVER commit real credentials
 .env
+.env.local
+.env.*.local
+*.env
 
-
-# Data
+# Data – large binary/CSV datasets are not versioned here
 /data/*
-
 
 # Build / Dist
 /dist/*
@@ -17,25 +22,33 @@ venv/
 build/
 *.spec
 
-
 # Node / JS
 node_modules/
-
 
 # OS
 .DS_Store
 Thumbs.db
 
-
 # Logs
 logs/
 *.log
 
-
-# Ruff
+# Ruff / linting caches
 .ruff_cache/
+.mypy_cache/
+.pytest_cache/
 
+# Frontend build output
+frontend/dist/
+frontend/node_modules/
 
 # Temp / local artifacts
 /tmp_project_items.json
 .vscode/
+
+# Local traffic snapshots (runtime-generated data, not for version control)
+traffic_live_snapshots/
+
+# Jupyter / IPython
+.ipynb_checkpoints/
+*.ipynb

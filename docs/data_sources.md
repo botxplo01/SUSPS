@@ -54,7 +54,7 @@ Under **`data/<CITY/raw`**, ensure that you create the following sub-directories
 2. **`data/<CITY>/raw/Energy_and_Infrastructure`:** stores raw _ENERGY & INFRASTRUCTURE_ data files
 3. **`data/<CITY>/raw/Environmental_and_Climate`:** stores raw _ENVIRONMENTAL & CLIMATE_ data files
 4. **`data/<CITY>/raw/Mobility_and_Transport`:** stores raw _MOBILITY & TRANSPORT_ data files
-5. **`data/<CITY>/raw/Mobility_and_Transport`:** stores raw _SMART CITY & URBAN GROWTH_ data files
+5. **`data/<CITY>/raw/Urban_Growth`:** stores raw _SMART CITY & URBAN GROWTH_ data files
 
 **Note**: Make sure to adhere to the sub-directory names to avoid directory name issues
 

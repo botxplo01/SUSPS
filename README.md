@@ -11,7 +11,7 @@ The SUSPS platform is built on a decoupled, service-oriented architecture, which
 ``` graphql:
 +-----------------+      +------------------+      +-----------------+
 |   Frontend      |      |   Backend        |      |   Data Pipeline |
-| (React, Vite)   | <--> | (FastAPI, Python)| <--> | (Python, Pandas)|
+| (React, Vite)   | <-> | (FastAPI, Python)| <-> | (Python, Pandas)|
 +-----------------+      +------------------+      +-----------------+
         |                         |                         |
         v                         v                         v
@@ -19,6 +19,38 @@ The SUSPS platform is built on a decoupled, service-oriented architecture, which
 |   User          |      |   Database      |       |   Data Sources  |
 | (Web Browser)   |      | (PostgreSQL)    |       | (S3, APIs)      |
 +-----------------+      +-----------------+       +-----------------+
+```
+
+## Project Structure
+
+```
+SUSPS/
+├── backend/               # All Python application code
+│   ├── advisory/          # AI advisory engine (HuggingFace integration)
+│   ├── db/                # SQLAlchemy ORM models, session, schema, seeding
+│   ├── models/            # Growth, energy, and traffic prediction models
+│   ├── pipeline/          # Data ingestion, preprocessing, config
+│   ├── scripts/           # Management scripts (schema, seeding, formatting)
+│   ├── tests/             # Backend test suite
+│   ├── api.py             # FastAPI application entry point
+│   ├── simulation.py      # Deterministic scenario simulation helpers
+│   ├── ts_forecast.py     # Time-series forecasting helper
+│   ├── requirements.txt   # Production Python dependencies
+│   ├── requirements-dev.txt # Development Python dependencies
+│   ├── pyproject.toml     # Black, Ruff, mypy configuration
+│   └── pytest.ini         # Pytest configuration
+├── frontend/              # React/TypeScript frontend application
+│   ├── src/               # Application source code
+│   ├── index.html
+│   ├── package.json
+│   └── vite.config.ts
+├── docs/                  # Project documentation
+├── data/                  # Data directory (gitignored; city-scoped)
+├── .env.example           # Example environment configuration
+├── render.yaml            # Render deployment configuration
+├── Procfile               # Process definition
+├── dvc.yaml               # DVC pipeline definition
+└── README.md
 ```
 
 ## Features
@@ -57,8 +89,6 @@ The SUSPS platform is built on a decoupled, service-oriented architecture, which
 
 ## Getting Started
 
-To set up a local development environment, you will need to run the frontend and backend services separately.
-
 ### PREREQUISITES
 
 - Raw data files (view `docs/data_sources.md` for details)
@@ -72,45 +102,51 @@ To set up a local development environment, you will need to run the frontend and
 
 ### BACKEND SETUP
 
-1. **Create a virtual environment and install dependencies**:
+1. **Create a Python virtual environment and install dependencies**:
 
     ```bash
+    > cd backend
     > python -m venv .venv
-    > .venv\scripts\activate  # On Unix-like systems, use `.venv/bin/activate`
+    > .venv\Scripts\activate       # Windows
+    # or: source .venv/bin/activate  # Unix/macOS
     > pip install -r requirements.txt
     ```
 
 2. **Setup the database (required)**
+
    1. **Create a PostgreSQL user and a database.**
 
    2. **Configure the database connection**:
        Set the `USE_LOCAL_DB` and `LOCAL_DATABASE_URL` environment variables in a `.env` file in the root of the project.
 
    3. **Apply the database schema**:
-       The schema is defined in `src/backend/db/susps_schema_dump.sql`. It can be created by running `scripts/create_schema.py` as a script:
+       The schema can be created by running `scripts/create_schema.py` from inside the `backend/` directory:
 
-       ``` bash
-       > python -m scripts/create_schema.py
+       ```bash
+       > cd backend
+       > python -m scripts.create_schema
        ```
 
-3. **Run the pipeline locally:**
+3. **Run the pipeline locally (from inside `backend/`)**:
 
     ```bash
-    > python -m src.pipeline.ingest
-    > python -m src.pipeline.preprocess
+    > cd backend
+    > python -m pipeline.ingest
+    > python -m pipeline.preprocess
     ```
 
-4. **Seed the database**:
-       Run the seeding script to populate the database with processed data:
+4. **Seed the database** (from inside `backend/`):
 
     ```bash
-    > python -m src.backend.db.seed_from_processed
+    > cd backend
+    > python -m db.seed_from_processed
     ```
 
-5. **Run the backend server**:
+5. **Run the backend server** (from inside `backend/`):
 
     ```bash
-    > uvicorn src.backend.api:app --reload
+    > cd backend
+    > uvicorn api:app --reload
     ```
 
     The API will be available at `http://127.0.0.1:8000`, and the interactive API documentation (Swagger UI) can be accessed at `http://127.0.0.1:8000/docs`.
@@ -120,7 +156,7 @@ To set up a local development environment, you will need to run the frontend and
 1. **Navigate to the frontend directory**:
 
     ```bash
-    > cd src/frontend
+    > cd frontend
     ```
 
 2. **Install dependencies**:
@@ -160,11 +196,12 @@ From the dashboard, you can explore various sections, including predictions and 
 
 The data pipeline is a series of Python scripts that ingest, process, and enrich data from various sources. The pipeline is orchestrated to produce clean, analysis-ready datasets that are used by the backend and the machine learning models.
 
-To run the pipeline locally:
+To run the pipeline locally (from inside `backend/`):
 
 ```bash
-python -m src.pipeline.ingest
-python -m src.pipeline.preprocess
+cd backend
+python -m pipeline.ingest
+python -m pipeline.preprocess
 ```
 
 The pipeline reads raw data and writes processed artifacts to the `data/` directory.
